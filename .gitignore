@@ -1,0 +1,55 @@
+# Local build tools, downloaded dependencies and SDKs
+/.build/
+/.deps/
+/vendor/archives/
+/.theos/
+/DerivedData/
+
+# Packages are published as GitHub Release assets
+/dist/
+/packages/
+*.ipa
+*.deb
+*.o
+*.a
+*.dylib
+*.dSYM/
+
+# Local diagnostics, device captures and working notes
+/.superpowers/
+/docs/superpowers/
+/docs/verification/
+/docs/ui/screenshots/
+/docs/DEVICE-*
+/docs/TEST-RESULTS.md
+/docs/UI-OPTIMIZATION-PLAN.md
+/docs/UI-PLAYER-UPDATE.md
+/docs/FLAC-CACHE-CHANGE.md
+*.log
+/tests/.tmp/
+
+# Credentials and signing material; the public CA bundle is a build input
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+!Resources/cacert.pem
+*.p12
+*.pfx
+*.mobileprovision
+
+# Editor, Python and macOS temporary files
+xcuserdata/
+*.xcuserstate
+.idea/
+.DS_Store
+._*
+__MACOSX/
+__pycache__/
+*.py[cod]
+*.swp
+*.swo
+*.tmp
+*.part
+*~
