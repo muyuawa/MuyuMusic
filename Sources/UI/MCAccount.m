@@ -2,7 +2,7 @@
 #import "MCTheme.h"
 #import "MCDialogs.h"
 #import "MCAPI.h"
-#import <CoreImage/CoreImage.h>
+#import "MCQRCode.h"
 @interface MCAccountController ()
 @property (nonatomic, strong) UIScrollView *scroll;
 @property (nonatomic, strong) UILabel *status;
@@ -17,7 +17,7 @@
 @end
 @implementation MCAccountController
 - (UIButton *)button:(NSString *)text action:(SEL)action {
-    UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
+    UIButton *b = MCTextButton();
     [b setTitle:text forState:UIControlStateNormal];
     [b addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
     [self.scroll addSubview:b];
@@ -29,6 +29,8 @@
     self.scroll = [UIScrollView new];
     [self.view addSubview:self.scroll];
     self.status = [UILabel new];
+    self.status.backgroundColor = [UIColor clearColor];
+    self.status.opaque = NO;
     self.status.numberOfLines = 0;
     self.status.textAlignment = NSTextAlignmentCenter;
     self.status.font = [UIFont systemFontOfSize:15];
@@ -38,6 +40,8 @@
     self.qr.backgroundColor = [UIColor whiteColor];
     [self.scroll addSubview:self.qr];
     self.instructions = [UILabel new];
+    self.instructions.backgroundColor = [UIColor clearColor];
+    self.instructions.opaque = NO;
     self.instructions.numberOfLines = 0;
     self.instructions.font = [UIFont systemFontOfSize:13];
     self.instructions.textAlignment = NSTextAlignmentCenter;
@@ -58,7 +62,7 @@
     self.view.backgroundColor = t.background;
     self.status.textColor = t.text;
     self.instructions.textColor = t.muted;
-    self.view.tintColor = t.primary;
+
 }
 - (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; [self.timer invalidate]; }
 - (void)viewWillDisappear:(BOOL)a {
@@ -107,17 +111,11 @@
             return;
         }
         s.key = result[@"key"];
-        NSData *data = [result[@"url"] dataUsingEncoding:NSUTF8StringEncoding];
-        CIFilter *filter = [CIFilter filterWithName:@"CIQRCodeGenerator"];
-        [filter setValue:data forKey:@"inputMessage"];
-        [filter setValue:@"M" forKey:@"inputCorrectionLevel"];
-        CIImage *output = filter.outputImage;
-        if (!output) {
+        CGImageRef cg = MCCreateLoginQRCode(result[@"url"]);
+        if (!cg) {
             s.status.text = @"无法生成二维码，请重试。";
             return;
         }
-        CIContext *context = [CIContext contextWithOptions:@{kCIContextUseSoftwareRenderer : @YES}];
-        CGImageRef cg = [context createCGImage:output fromRect:output.extent];
         if (cg) {
             UIGraphicsBeginImageContextWithOptions(CGSizeMake(176, 176), YES, 0);
             CGContextRef ctx = UIGraphicsGetCurrentContext();

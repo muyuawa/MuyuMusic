@@ -1,5 +1,6 @@
 #import "MCTheme.h"
 #import "MCColor.h"
+#import <QuartzCore/QuartzCore.h>
 #include <math.h>
 NSString *const MCThemeDidChangeNotification = @"MCThemeDidChangeNotification";
 static UIColor *MCUIColor(MCColor c) {
@@ -10,6 +11,27 @@ static UIColor *MCRGB(unsigned x) {
                            green:((x >> 8) & 255) / 255.0
                             blue:(x & 255) / 255.0
                            alpha:1];
+}
+static UIImage *MCThemeBarImage(UIColor *color) {
+    UIGraphicsBeginImageContextWithOptions(CGSizeMake(1, 32), NO, 0);
+    [color setFill];
+    UIRectFill(CGRectMake(0, 0, 1, 32));
+    UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    return [image resizableImageWithCapInsets:UIEdgeInsetsZero];
+}
+static UIImage *MCThemeBackImage(UIColor *color) {
+    UIGraphicsBeginImageContextWithOptions(CGSizeMake(26, 30), NO, 0);
+    [color setStroke];
+    UIBezierPath *arrow = [UIBezierPath bezierPath];
+    arrow.lineWidth = 2;
+    [arrow moveToPoint:CGPointMake(12, 7)];
+    [arrow addLineToPoint:CGPointMake(4, 15)];
+    [arrow addLineToPoint:CGPointMake(12, 23)];
+    [arrow stroke];
+    UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    return [image resizableImageWithCapInsets:UIEdgeInsetsMake(0, 18, 0, 2)];
 }
 @interface MCTheme ()
 @property (nonatomic, copy) NSString *artworkHex;
@@ -134,12 +156,114 @@ static UIColor *MCRGB(unsigned x) {
     [[NSUserDefaults standardUserDefaults] setBool:dark forKey:@"theme.dark"];
     [self apply];
 }
+- (void)applyToNavigationBar:(UINavigationBar *)bar {
+    bar.translucent = NO;
+    [bar setBackgroundImage:MCThemeBarImage(self.surface) forBarMetrics:UIBarMetricsDefault];
+    if (@available(iOS 7.0, *)) {
+        bar.barTintColor = self.surface;
+        bar.tintColor = self.primary;
+    } else {
+        bar.tintColor = self.surface;
+        bar.barStyle = self.dark ? UIBarStyleBlack : UIBarStyleDefault;
+    }
+    bar.titleTextAttributes = @{UITextAttributeTextColor:self.text,
+                               UITextAttributeTextShadowColor:[UIColor clearColor]};
+    // UIAppearance only initializes new buttons. Refresh existing/back items
+    // after a cover-color change and whenever a controller is pushed.
+    for (UINavigationItem *navigation in bar.items) {
+        if (!navigation.backBarButtonItem && navigation.title.length)
+            navigation.backBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:navigation.title
+                style:UIBarButtonItemStylePlain target:nil action:NULL];
+        NSMutableArray *items = [NSMutableArray arrayWithArray:navigation.leftBarButtonItems ?: @[]];
+        [items addObjectsFromArray:navigation.rightBarButtonItems ?: @[]];
+        if (navigation.backBarButtonItem) [items addObject:navigation.backBarButtonItem];
+        for (UIBarButtonItem *item in items) {
+            for (NSNumber *state in @[@(UIControlStateNormal), @(UIControlStateHighlighted)]) {
+                [item setTitleTextAttributes:@{UITextAttributeTextColor:self.primary,
+                    UITextAttributeTextShadowColor:[UIColor clearColor]} forState:state.unsignedIntegerValue];
+                [item setBackgroundImage:MCThemeBarImage([UIColor clearColor])
+                               forState:state.unsignedIntegerValue barMetrics:UIBarMetricsDefault];
+                [item setBackButtonBackgroundImage:MCThemeBackImage(self.primary)
+                                         forState:state.unsignedIntegerValue barMetrics:UIBarMetricsDefault];
+            }
+        }
+    }
+}
+- (void)applyToTabBar:(UITabBar *)bar {
+    bar.backgroundImage = MCThemeBarImage(self.surface);
+    if (@available(iOS 7.0, *)) {
+        bar.barTintColor = self.surface;
+        bar.tintColor = self.primary;
+        bar.translucent = NO;
+    } else {
+        bar.tintColor = self.surface;
+        bar.selectedImageTintColor = self.primary;
+    }
+}
+- (void)applyToSearchBar:(UISearchBar *)bar {
+    if (@available(iOS 7.0, *)) {
+        bar.barTintColor = self.surface;
+        bar.tintColor = self.primary;
+    } else {
+        bar.tintColor = self.surface;
+        bar.barStyle = self.dark ? UIBarStyleBlack : UIBarStyleDefault;
+    }
+}
+- (void)applyToSegmentedControl:(UISegmentedControl *)control {
+    control.tintColor = self.primary;
+    [control setBackgroundImage:MCThemeBarImage(self.surface) forState:UIControlStateNormal barMetrics:UIBarMetricsDefault];
+    [control setBackgroundImage:MCThemeBarImage(self.primary) forState:UIControlStateSelected barMetrics:UIBarMetricsDefault];
+    [control setTitleTextAttributes:@{UITextAttributeFont:[UIFont systemFontOfSize:13],
+        UITextAttributeTextColor:self.text, UITextAttributeTextShadowColor:[UIColor clearColor]}
+        forState:UIControlStateNormal];
+    [control setTitleTextAttributes:@{UITextAttributeFont:[UIFont boldSystemFontOfSize:13],
+        UITextAttributeTextColor:self.onPrimary, UITextAttributeTextShadowColor:[UIColor clearColor]}
+        forState:UIControlStateSelected];
+    control.layer.cornerRadius = 7;
+    control.layer.borderWidth = 1;
+    control.layer.borderColor = self.primary.CGColor;
+    control.clipsToBounds = YES;
+}
 - (void)apply {
-    [[UINavigationBar appearance] setBarTintColor:self.surface];
-    [[UINavigationBar appearance] setTintColor:self.primary];
-    [[UINavigationBar appearance] setTitleTextAttributes:@{NSForegroundColorAttributeName : self.text}];
-    [[UITabBar appearance] setBarTintColor:self.surface];
-    [[UITabBar appearance] setTintColor:self.primary];
+    if (@available(iOS 7.0, *)) {
+        [[UINavigationBar appearance] setBarTintColor:self.surface];
+        [[UITabBar appearance] setBarTintColor:self.surface];
+    }
+    [[UINavigationBar appearance] setTitleTextAttributes:@{UITextAttributeTextColor:self.text,
+        UITextAttributeTextShadowColor:[UIColor clearColor]}];
+    // iOS 6 bars use tintColor for their background. Bar items need their own
+    // text attributes instead of inheriting UIView's iOS 7 tint behavior.
+    UIImage *clear = MCThemeBarImage([UIColor clearColor]);
+    for (NSNumber *state in @[@(UIControlStateNormal), @(UIControlStateHighlighted)]) {
+        [[UIBarButtonItem appearance] setBackgroundImage:clear forState:state.unsignedIntegerValue barMetrics:UIBarMetricsDefault];
+        [[UIBarButtonItem appearance] setBackButtonBackgroundImage:MCThemeBackImage(self.primary)
+            forState:state.unsignedIntegerValue barMetrics:UIBarMetricsDefault];
+    }
+    [[UIBarButtonItem appearance] setTitleTextAttributes:@{UITextAttributeTextColor:self.primary,
+        UITextAttributeTextShadowColor:[UIColor clearColor]} forState:UIControlStateNormal];
+    [[UIApplication sharedApplication] setStatusBarStyle:self.dark ? UIStatusBarStyleBlackOpaque : UIStatusBarStyleDefault];
     [[NSNotificationCenter defaultCenter] postNotificationName:MCThemeDidChangeNotification object:self];
 }
 @end
+
+@interface MCThemedTextButton : UIButton
+@end
+@implementation MCThemedTextButton
+- (id)initWithFrame:(CGRect)frame {
+    if ((self = [super initWithFrame:frame])) {
+        self.titleLabel.font = [UIFont systemFontOfSize:15];
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updateColors)
+            name:MCThemeDidChangeNotification object:nil];
+        [self updateColors];
+    }
+    return self;
+}
+- (void)updateColors {
+    MCTheme *theme = [MCTheme sharedTheme];
+    [self setTitleColor:theme.primary forState:UIControlStateNormal];
+    [self setTitleColor:[theme.primary colorWithAlphaComponent:.6] forState:UIControlStateHighlighted];
+    [self setTitleColor:theme.muted forState:UIControlStateDisabled];
+}
+- (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; }
+@end
+UIButton *MCTextButton(void) { return [[MCThemedTextButton alloc] initWithFrame:CGRectZero]; }

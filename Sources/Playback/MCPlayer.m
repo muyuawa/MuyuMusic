@@ -693,7 +693,8 @@ static void *MCPlayerItemContext = &MCPlayerItemContext;
 }
 - (void)prepareNative:(MCAudioSource *)source generation:(NSUInteger)generation {
     NSURL *url = [NSURL fileURLWithPath:source.path];
-    BOOL progressive = !mc_spool_complete(source.spool) && source.contentLength > 0;
+    BOOL progressive = source.allowsProgressiveNativePlayback &&
+                       !mc_spool_complete(source.spool) && source.contentLength > 0;
     if (progressive) {
         _nativeLoader = [[MCNativeResourceLoader alloc] initWithSource:source];
         __weak MCPlayer *weakSelf = self;
@@ -841,7 +842,7 @@ static void *MCPlayerItemContext = &MCPlayerItemContext;
     if (_source && mc_spool_error(_source.spool) && ![self.currentTrack[@"path"] length])
         return MCPlaybackError(MCPlaybackNetworkError,
                                @"The audio stream was interrupted or incomplete. Tap Retry.", YES);
-    return MCPlaybackError(MCPlaybackDecodeError, @"This audio file is damaged or cannot be played by iOS 7.",
+    return MCPlaybackError(MCPlaybackDecodeError, @"This audio file is damaged or cannot be played by this version of iOS.",
                            NO);
 }
 - (void)nativeStatusChanged {

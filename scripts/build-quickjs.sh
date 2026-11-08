@@ -9,12 +9,15 @@ task_src="$PWD/.deps/src/quickjs-$task_version"
 mkdir -p .build/quickjs/include
 cp "$task_src/quickjs.h" .build/quickjs/include/
 # Single-queue interpreter has no shared-memory threads. Omit Atomics wait APIs
-# (clock_gettime is unavailable on iOS 7); retain stack checks and interruption.
+# (clock_gettime is unavailable on iOS 6/7); retain stack checks and interruption.
 sed 's/^#define CONFIG_ATOMICS$/\/\* Atomics disabled for bounded single-queue host. *\//' "$task_src/quickjs.c" > .build/quickjs/quickjs.c.tmp
 if ! cmp -s .build/quickjs/quickjs.c.tmp .build/quickjs/quickjs.c; then mv .build/quickjs/quickjs.c.tmp .build/quickjs/quickjs.c; else rm .build/quickjs/quickjs.c.tmp; fi
 for task_target in host armv7; do
   if [[ "${1:-}" == --host && "$task_target" == armv7 ]]; then continue; fi
   mkdir -p ".build/quickjs/$task_target"
+  if [[ "$task_target" == armv7 && "$(cat .build/quickjs/armv7/.target 2>/dev/null)" != armv7-apple-ios6.0 ]]; then
+    rm -f .build/quickjs/armv7/*.o .build/quickjs/armv7/libquickjs.a
+  fi
   task_cc=(clang)
   if [[ "$task_target" == armv7 ]]; then task_cc=(scripts/cc-ios); fi
   task_objects=()
@@ -28,6 +31,9 @@ for task_target in host armv7; do
     task_objects+=("$task_obj")
   done
   ar rcs ".build/quickjs/$task_target/libquickjs.a" "${task_objects[@]}"
+  if [[ "$task_target" == armv7 ]]; then
+    printf '%s\n' armv7-apple-ios6.0 > .build/quickjs/armv7/.target
+  fi
 done
 # RSA uses the same audited Mbed TLS as the transport; host tests need its host archive.
 if [[ ! -f .build/quickjs/mbedtls/library/libmbedcrypto.a ]]; then

@@ -22,6 +22,9 @@ NSError *MCPlaybackError(MCPlaybackErrorCode code, NSString *description, BOOL r
 @property (nonatomic, readonly) NSString *path;
 @property (nonatomic, readonly) NSString *contentType;
 @property (nonatomic, readonly) uint64_t contentLength;
+/* AVAssetResourceLoadingDataRequest requires iOS 7. Disable early native
+   readiness on iOS 6; FLAC uses our own decoder and remains incremental. */
+@property (nonatomic) BOOL allowsProgressiveNativePlayback;
 @property (nonatomic, copy) void (^ready)(BOOL flac);
 @property (nonatomic, copy) void (^failure)(NSError *error);
 @property (nonatomic, copy) void (^downloadCompleted)(NSString *path);

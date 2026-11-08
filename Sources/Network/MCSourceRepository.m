@@ -1,3 +1,4 @@
+#import "MCEncoding.h"
 #import "MCSourceRepository.h"
 #import "MCMusicSources.h"
 #import "MCHTTPClient.h"
@@ -338,10 +339,7 @@ static NSDictionary *MCRItem(id value) {
                                       [blob[@"content"] isKindOfClass:[NSString class]] &&
                                       [blob[@"sha"] isEqual:item[@"sha"]] &&
                                       [blob[@"size"] isEqual:item[@"size"]]
-                                  ? [[NSData alloc]
-                                        initWithBase64EncodedString:blob[@"content"]
-                                                            options:
-                                                                NSDataBase64DecodingIgnoreUnknownCharacters]
+                                  ? MCBase64Data(blob[@"content"])
                                   : nil;
                       }
                       if (!scriptData.length || scriptData.length > 1024 * 1024 ||

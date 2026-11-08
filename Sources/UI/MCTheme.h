@@ -14,5 +14,11 @@ extern NSString *const MCThemeDidChangeNotification;
 @property (nonatomic, readonly) UIColor *accent;
 - (BOOL)setValidatedHex:(NSString *)hex;
 - (void)apply;
+- (void)applyToNavigationBar:(UINavigationBar *)bar;
+- (void)applyToTabBar:(UITabBar *)bar;
+- (void)applyToSearchBar:(UISearchBar *)bar;
+- (void)applyToSegmentedControl:(UISegmentedControl *)control;
 - (void)updateArtwork:(UIImage *)image;
 @end
+
+UIButton *MCTextButton(void);

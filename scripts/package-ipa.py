@@ -7,7 +7,7 @@ root=Path(__file__).resolve().parent.parent
 package=root/'.build/package'
 version=plistlib.loads((package/'Payload/MuyuMusic.app/Info.plist').read_bytes())['CFBundleShortVersionString']
 assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+',version)
-target=root/f'dist/MuyuMusic-{version}-armv7.ipa'
+target=root/f'dist/MuyuMusic-{version}-ios6-armv7.ipa'
 target.parent.mkdir(exist_ok=True)
 temporary=target.with_suffix('.ipa.new')
 with zipfile.ZipFile(temporary,'w',zipfile.ZIP_DEFLATED,compresslevel=6) as archive:

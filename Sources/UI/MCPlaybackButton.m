@@ -64,8 +64,7 @@ static void MCTriangle(CGContextRef c, CGFloat x, CGFloat direction) {
             CGContextAddQuadCurveToPoint(c, 21, 19, 17, 19); CGContextAddLineToPoint(c, 3, 19);
             MCLine(c, 7, 15, 3, 19); MCLine(c, 3, 19, 7, 23); CGContextStrokePath(c);
             if (self.icon == MCPlaybackIconRepeatOne)
-                [@"1" drawInRect:CGRectMake(9, 5, 8, 14) withAttributes:@{
-                    NSFontAttributeName:[UIFont boldSystemFontOfSize:11], NSForegroundColorAttributeName:self.ink}];
+                [@"1" drawInRect:CGRectMake(9, 5, 8, 14) withFont:[UIFont boldSystemFontOfSize:11]];
             break;
         case MCPlaybackIconShuffle:
             CGContextMoveToPoint(c, 2, 5); CGContextAddLineToPoint(c, 5, 5);

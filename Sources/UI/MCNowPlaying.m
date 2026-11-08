@@ -62,8 +62,10 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
 - (id)init {
     if ((self = [super init])) {
         self.hidesBottomBarWhenPushed = YES;
-        self.edgesForExtendedLayout = UIRectEdgeNone;
-        self.automaticallyAdjustsScrollViewInsets = NO;
+        if (@available(iOS 7.0, *)) {
+            self.edgesForExtendedLayout = UIRectEdgeNone;
+            self.automaticallyAdjustsScrollViewInsets = NO;
+        }
         _activeLine = -1;
     }
     return self;
@@ -78,6 +80,8 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
 }
 - (UILabel *)label:(CGFloat)size {
     UILabel *l = [UILabel new];
+    l.backgroundColor = [UIColor clearColor];
+    l.opaque = NO;
     l.textAlignment = NSTextAlignmentCenter;
     l.font = [UIFont systemFontOfSize:size];
     l.lineBreakMode = NSLineBreakByTruncatingTail;
@@ -110,6 +114,8 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
     self.lyricsTable.hidden = YES;
     self.lyricsTable.clipsToBounds = YES;
     self.lyricsEmpty = [UILabel new];
+    self.lyricsEmpty.backgroundColor = [UIColor clearColor];
+    self.lyricsEmpty.opaque = NO;
     self.lyricsEmpty.font = [UIFont systemFontOfSize:14];
     self.lyricsEmpty.numberOfLines = 4;
     self.lyricsEmpty.textAlignment = NSTextAlignmentCenter;
@@ -125,6 +131,7 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
     [self.quality addTarget:self action:@selector(qualityReleased)
           forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
     self.qualityBadge = [UILabel new];
+    self.qualityBadge.backgroundColor = [UIColor clearColor];
     self.qualityBadge.font = [UIFont systemFontOfSize:11];
     self.qualityBadge.textAlignment = NSTextAlignmentCenter;
     self.qualityBadge.layer.cornerRadius = 7;
@@ -161,6 +168,8 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
                                                           target:self action:@selector(queueTapped)];
     self.navigationItem.rightBarButtonItems = @[detailItem, queue];
     self.navigationTitle = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 112, 28)];
+    self.navigationTitle.backgroundColor = [UIColor clearColor];
+    self.navigationTitle.opaque = NO;
     self.navigationTitle.font = [UIFont boldSystemFontOfSize:14];
     self.navigationTitle.textAlignment = NSTextAlignmentCenter;
     self.navigationTitle.lineBreakMode = NSLineBreakByTruncatingTail;
@@ -184,6 +193,7 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
     self.navigationController.navigationBar.translucent = NO;
     [self.tabBarController.view viewWithTag:8080].hidden = YES;
     [self.tabBarController.view viewWithTag:8081].hidden = YES;
+    [self theme];
     [self update];
     [self refreshFavorite];
     self.lyricsResumeAfter = 0;
@@ -237,10 +247,9 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
     self.elapsed.textColor = self.total.textColor = t.muted;
     self.qualityBadge.backgroundColor = [t.primary colorWithAlphaComponent:t.dark ? .18 : .09];
     self.qualityBadge.textColor = t.muted;
-    self.view.tintColor = t.primary;
-    self.mode.tintColor = t.primary;
-    [self.mode setTitleTextAttributes:@{NSFontAttributeName:[UIFont systemFontOfSize:12]}
-                            forState:UIControlStateNormal];
+
+    [t applyToSegmentedControl:self.mode];
+    [t applyToNavigationBar:self.navigationController.navigationBar];
     [self.slider setMinimumTrackImage:MCPlayerSliderTrack(t.primary) forState:UIControlStateNormal];
     [self.slider setMaximumTrackImage:MCPlayerSliderTrack([t.muted colorWithAlphaComponent:.25])
                             forState:UIControlStateNormal];

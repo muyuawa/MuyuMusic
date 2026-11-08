@@ -77,7 +77,7 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
             [w receivedCatalog:result error:error];
             if ([kind isEqual:@"artists"] && [result[@"albums"] count]) {
                 NSArray *albums = result[@"albums"];
-                UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
+                UIButton *b = MCTextButton();
                 [b setTitle:[NSString stringWithFormat:@"%lu 张专辑 →", (unsigned long)albums.count]
                     forState:UIControlStateNormal];
                 b.frame = CGRectMake(0, 0, 320, 48);
@@ -127,7 +127,7 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
     if ([self.kind isEqual:@"local"] || [self.kind isEqual:@"search"])
         [self setupSearch];
     if ([self.kind isEqual:@"playlists"] && [self.title isEqual:@"发现"]) {
-        UIButton *daily = [UIButton buttonWithType:UIButtonTypeSystem];
+        UIButton *daily = MCTextButton();
         daily.frame = CGRectMake(0, 0, 320, 56);
         daily.autoresizingMask = UIViewAutoresizingFlexibleWidth;
         daily.titleLabel.font = [UIFont boldSystemFontOfSize:17];
@@ -170,19 +170,18 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
     [self.navigationController pushViewController:[MCAccountController new] animated:YES];
 }
 - (UIStatusBarStyle)preferredStatusBarStyle {
-    return [MCTheme sharedTheme].dark ? UIStatusBarStyleLightContent : UIStatusBarStyleDefault;
+    return [MCTheme sharedTheme].dark ? UIStatusBarStyleBlackOpaque : UIStatusBarStyleDefault;
 }
 - (void)theme {
     MCTheme *t = [MCTheme sharedTheme];
     self.view.backgroundColor = t.background;
+    self.tableView.backgroundView = nil;
     self.tableView.backgroundColor = t.background;
-    self.navigationController.navigationBar.barTintColor = t.surface;
-    self.navigationController.navigationBar.titleTextAttributes = @{NSForegroundColorAttributeName : t.text};
-    self.navigationController.navigationBar.tintColor = t.primary;
-    self.search.barTintColor = t.surface;
+    [t applyToNavigationBar:self.navigationController.navigationBar];
+    [t applyToSearchBar:self.search];
+    [t applyToSegmentedControl:self.categories];
     self.status.textColor = t.muted;
-    self.tableView.tableHeaderView.tintColor = t.primary;
-    [self setNeedsStatusBarAppearanceUpdate];
+    if (@available(iOS 7.0, *)) [self setNeedsStatusBarAppearanceUpdate];
     [self.tableView reloadData];
 }
 - (void)setupSearch {
@@ -232,6 +231,8 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
 - (void)footer:(NSString *)text retry:(BOOL)retry {
     UIView *f = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 320, retry ? 128 : 82)];
     self.status = [[UILabel alloc] initWithFrame:CGRectMake(20, 8, 280, 64)];
+    self.status.backgroundColor = [UIColor clearColor];
+    self.status.opaque = NO;
     self.status.autoresizingMask = UIViewAutoresizingFlexibleWidth;
     self.status.textAlignment = NSTextAlignmentCenter;
     self.status.numberOfLines = 0;
@@ -253,7 +254,7 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
         self.status.frame = CGRectMake(20, 44, 280, 32);
     }
     if (retry) {
-        UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
+        UIButton *b = MCTextButton();
         b.frame = CGRectMake(70, 76, 180, 44);
         [b setTitle:self.loginRequired ? @"登录" : self.more ? @"加载更多" : @"重试" forState:UIControlStateNormal];
         [b addTarget:self
@@ -403,6 +404,7 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
     card.backgroundColor = theme.surface;
     card.layer.cornerRadius = 14;
     c.backgroundView = card;
+    c.textLabel.backgroundColor = c.detailTextLabel.backgroundColor = [UIColor clearColor];
     c.textLabel.font = [UIFont systemFontOfSize:16];
     c.textLabel.textColor = theme.text;
     c.detailTextLabel.font = [UIFont systemFontOfSize:12];
@@ -414,7 +416,7 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
                                            MCTime([d[@"duration"] doubleValue])]
               : MCS(d[@"subtitle"]);
     c.accessoryType =
-        track ? UITableViewCellAccessoryDetailButton : UITableViewCellAccessoryDisclosureIndicator;
+        track ? UITableViewCellAccessoryDetailDisclosureButton : UITableViewCellAccessoryDisclosureIndicator;
     c.imageView.backgroundColor = theme.background;
     c.imageView.layer.cornerRadius = 8;
     c.imageView.clipsToBounds = YES;
@@ -553,8 +555,21 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
 @end
 
 @interface MCLibraryController : UITableViewController
+@property (nonatomic, strong) UILabel *instructions;
 @end
 @implementation MCLibraryController
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    CGFloat width = self.tableView.bounds.size.width;
+    CGSize fit = [self.instructions sizeThatFits:CGSizeMake(MAX(1, width - 32), CGFLOAT_MAX)];
+    self.instructions.frame = CGRectMake(16, 12, MAX(1, width - 32), ceil(fit.height));
+    UIView *footer = self.tableView.tableFooterView;
+    CGSize size = CGSizeMake(width, ceil(fit.height) + 24);
+    if (!CGSizeEqualToSize(footer.bounds.size, size)) {
+        footer.frame = CGRectMake(0, 0, size.width, size.height);
+        self.tableView.tableFooterView = footer;
+    }
+}
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"音乐库";
@@ -571,12 +586,16 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
                                                                              style:UIBarButtonItemStylePlain
                                                                             target:self
                                                                             action:@selector(settings)];
-    UILabel *info = [[UILabel alloc] initWithFrame:CGRectMake(16, 0, 288, 100)];
-    info.numberOfLines = 0;
-    info.font = [UIFont systemFontOfSize:13];
-    info.text =
-        @"用 iTunes 文件共享导入音乐和同名 .lrc 歌词，返回应用后自动扫描。";
-    self.tableView.tableFooterView = info;
+    UIView *footer = [[UIView alloc] initWithFrame:CGRectZero];
+    self.instructions = [UILabel new];
+    self.instructions.backgroundColor = [UIColor clearColor];
+    self.instructions.opaque = NO;
+    self.instructions.numberOfLines = 0;
+    self.instructions.lineBreakMode = NSLineBreakByWordWrapping;
+    self.instructions.font = [UIFont systemFontOfSize:13];
+    self.instructions.text = @"用 iTunes 文件共享导入音乐和同名 .lrc 歌词，返回应用后自动扫描。";
+    [footer addSubview:self.instructions];
+    self.tableView.tableFooterView = footer;
 }
 - (void)viewWillAppear:(BOOL)a {
     [super viewWillAppear:a];
@@ -584,8 +603,9 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
 }
 - (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; }
 - (void)themeChanged {
+    self.tableView.backgroundView = nil;
     self.tableView.backgroundColor = [MCTheme sharedTheme].background;
-    ((UILabel *)self.tableView.tableFooterView).textColor = [MCTheme sharedTheme].muted;
+    self.instructions.textColor = [MCTheme sharedTheme].muted;
     [self.tableView reloadData];
 }
 - (NSInteger)tableView:(UITableView *)t numberOfRowsInSection:(NSInteger)s {
@@ -601,6 +621,7 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
         @"本地歌曲", @"本地收藏", @"最近播放", @"本地歌单", @"我的网易云歌单",
         @"账号与扫码登录"
     ][p.row];
+    c.textLabel.backgroundColor = c.detailTextLabel.backgroundColor = [UIColor clearColor];
     c.textLabel.textColor = [MCTheme sharedTheme].text;
     c.backgroundColor = [MCTheme sharedTheme].surface;
     c.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
@@ -690,11 +711,20 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
 @property (nonatomic) BOOL lastFollowArtwork;
 @property (nonatomic, copy) NSString *lastLibraryError;
 @end
-@interface MCNavigationController : UINavigationController
+@interface MCNavigationController : UINavigationController <UINavigationControllerDelegate>
 @end
 @implementation MCNavigationController
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.delegate = self;
+}
+- (void)navigationController:(UINavigationController *)navigationController
+    willShowViewController:(UIViewController *)viewController animated:(BOOL)animated {
+    (void)viewController; (void)animated;
+    [[MCTheme sharedTheme] applyToNavigationBar:navigationController.navigationBar];
+}
 - (UIStatusBarStyle)preferredStatusBarStyle {
-    return [MCTheme sharedTheme].dark ? UIStatusBarStyleLightContent : UIStatusBarStyleDefault;
+    return [MCTheme sharedTheme].dark ? UIStatusBarStyleBlackOpaque : UIStatusBarStyleDefault;
 }
 @end
 @implementation MCRootController
@@ -731,7 +761,7 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
                                              selector:@selector(libraryError:)
                                                  name:MCLibraryDidChangeNotification
                                                object:nil];
-    self.mini = [UIButton buttonWithType:UIButtonTypeSystem];
+    self.mini = MCTextButton();
     self.mini.tag = 8080;
     [self.mini addTarget:self action:@selector(now) forControlEvents:UIControlEventTouchUpInside];
     [self.mini addTarget:self action:@selector(miniPressed) forControlEvents:UIControlEventTouchDown];
@@ -745,10 +775,14 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
     [self.mini addSubview:self.miniCover];
     [[MCArtwork sharedCache] load:nil into:self.miniCover];
     self.miniTitle = [UILabel new];
+    self.miniTitle.backgroundColor = [UIColor clearColor];
+    self.miniTitle.opaque = NO;
     self.miniTitle.font = [UIFont systemFontOfSize:14];
     self.miniTitle.lineBreakMode = NSLineBreakByTruncatingTail;
     [self.mini addSubview:self.miniTitle];
     self.miniArtist = [UILabel new];
+    self.miniArtist.backgroundColor = [UIColor clearColor];
+    self.miniArtist.opaque = NO;
     self.miniArtist.font = [UIFont systemFontOfSize:12];
     self.miniArtist.lineBreakMode = NSLineBreakByTruncatingTail;
     [self.mini addSubview:self.miniArtist];
@@ -817,15 +851,10 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
     self.miniCover.backgroundColor = t.background;
     self.miniBoundary.backgroundColor = [t.muted colorWithAlphaComponent:.18];
     self.toggleButton.ink = t.primary;
-    self.view.tintColor = t.primary;
-    self.tabBar.barTintColor = t.surface;
-    self.tabBar.translucent = NO;
+    [t applyToTabBar:self.tabBar];
     for (UINavigationController *nav in self.viewControllers) {
-        nav.navigationBar.barTintColor = t.surface;
-        nav.navigationBar.translucent = NO;
-        nav.navigationBar.tintColor = t.primary;
-        nav.navigationBar.titleTextAttributes = @{NSForegroundColorAttributeName : t.text};
-        [nav setNeedsStatusBarAppearanceUpdate];
+        [t applyToNavigationBar:nav.navigationBar];
+        if (@available(iOS 7.0, *)) [nav setNeedsStatusBarAppearanceUpdate];
     }
     self.miniTitle.text = p.currentTrack ? MCS(p.currentTrack[@"title"]) : @"暮雨音乐";
     self.miniArtist.text = p.currentTrack ? MCS(p.currentTrack[@"artist"]) : @"选择一首歌开始";

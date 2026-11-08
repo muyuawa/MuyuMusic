@@ -1,6 +1,6 @@
 # Shared subsystem contracts
 
-All Objective-C uses ARC, iOS 7 APIs and dispatch blocks. Completion blocks arrive on the main queue unless a stream callback explicitly says worker. All asynchronous methods return immediately. Never log cookies or QR tokens.
+All Objective-C uses ARC, iOS 6-compatible APIs and dispatch blocks. iOS 7-only paths are protected by runtime availability checks. Completion blocks arrive on the main queue unless a stream callback explicitly says worker. All asynchronous methods return immediately. Never log cookies or QR tokens.
 
 ## Track and catalog dictionaries
 

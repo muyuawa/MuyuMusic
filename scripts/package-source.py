@@ -12,7 +12,7 @@ documents={'docs/'+name for name in ('COMPATIBILITY.md','CUSTOM-SOURCES.md','DEP
                                     'INTERFACES.md','LIBRARY.md','NETWORK.md','PLAYBACK.md')}
 version=plistlib.loads((root/'Resources/Info.plist').read_bytes())['CFBundleShortVersionString']
 assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+',version)
-target=root/f'dist/MuyuMusic-source-{version}.zip'
+target=root/f'dist/MuyuMusic-source-{version}-ios6.zip'
 target.parent.mkdir(exist_ok=True)
 with zipfile.ZipFile(target,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=6) as archive:
     for name in sorted(set(filter(None,files))):

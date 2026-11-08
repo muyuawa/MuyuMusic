@@ -40,6 +40,8 @@ NSError *MCPlaybackError(MCPlaybackErrorCode code, NSString *description, BOOL r
             format:(NSString *)format
       customSource:(BOOL)customSource {
     if ((self = [super init])) {
+        if (@available(iOS 7.0, *))
+            _allowsProgressiveNativePlayback = YES;
         _customSource = customSource;
         _url = url;
         _expected = length;
@@ -245,7 +247,7 @@ NSError *MCPlaybackError(MCPlaybackErrorCode code, NSString *description, BOOL r
                     4 &&
                 (!memcmp(magic, "fLaC", 4) || [self->_format isEqualToString:@"flac"]))
                 [self announce:YES];
-            else if (self.contentLength && [self identifyNative])
+            else if (self.allowsProgressiveNativePlayback && self.contentLength && [self identifyNative])
                 [self announce:NO];
         }
         return YES;

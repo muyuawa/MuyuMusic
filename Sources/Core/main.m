@@ -17,7 +17,7 @@
     [[MCTheme sharedTheme] apply];
     self.window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
     self.window.rootViewController = [MCRootController new];
-    self.window.tintColor = [MCTheme sharedTheme].primary;
+    if (@available(iOS 7.0, *)) self.window.tintColor = [MCTheme sharedTheme].primary;
     [self.window makeKeyAndVisible];
     [[UIApplication sharedApplication] beginReceivingRemoteControlEvents];
     [self becomeFirstResponder];

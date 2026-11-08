@@ -1,6 +1,6 @@
 # Offline library
 
-`Sources/Library/MCLibrary.h` implements the contract in `docs/INTERFACES.md`; `MCLyrics.h` provides the standalone LRC parser. The implementation uses ARC, Foundation, dispatch, SQLite, AVFoundation, CoreMedia, CoreGraphics and ImageIO. It does not depend on UIKit or any account/network state. All implementation files compile against the iOS 7.1 SDK for ARMv7 with an iOS 7.0 deployment target.
+`Sources/Library/MCLibrary.h` implements the contract in `docs/INTERFACES.md`; `MCLyrics.h` provides the standalone LRC parser. The implementation uses ARC, Foundation, dispatch, SQLite, AVFoundation, CoreMedia, CoreGraphics and ImageIO. It does not depend on UIKit or any account/network state. All implementation files compile against the iOS 7.1 SDK for ARMv7 with an iOS 6.0 deployment target.
 
 The singleton stores its SQLite database in `Library/MuyuMusic/music.sqlite`. `initWithDatabasePath:documentsPath:` supports isolated host fixtures. Opening the database, all queries and mutations, recursive enumeration, metadata extraction and lyric reads execute on one serial worker queue. Every completion and `MCLibraryDidChangeNotification` arrives asynchronously on the main queue. Callers can enqueue a read after a mutation to observe its committed result.
 
@@ -39,4 +39,4 @@ scripts/cc-ios -fobjc-arc -fblocks -Wall -Wextra -Werror \
   -Wno-unused-command-line-argument -fsyntax-only Sources/Library/<file>.m
 ```
 
-No physical device runtime or long-duration memory measurement has been performed. Native-format decoding and metadata behavior still need verification on the actual iOS 7 firmware, including real MP3/AAC/ALAC/AIFF collections and their tag variants. Host tests validate WAV plus the bounded FLAC metadata path; their short FLAC fixture is a metadata/parser fixture, not a full playback acceptance file.
+No physical device runtime or long-duration memory measurement has been performed. Native-format decoding and metadata behavior still need verification on the actual iOS 6 firmware, including real MP3/AAC/ALAC/AIFF collections and their tag variants. Host tests validate WAV plus the bounded FLAC metadata path; their short FLAC fixture is a metadata/parser fixture, not a full playback acceptance file.

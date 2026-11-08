@@ -1,3 +1,4 @@
+#import "MCEncoding.h"
 #import "MCLXRuntime.h"
 #import "MCMusicSources.h"
 #import "MCHTTPClient.h"
@@ -600,9 +601,6 @@ static JSValue LXNative(JSContext *ctx, JSValueConst thisValue, int argc, JSValu
             if (![form isKindOfClass:[NSDictionary class]])
                 return bad;
             NSMutableArray *pairs = [NSMutableArray new];
-            NSCharacterSet *allowed =
-                [NSCharacterSet characterSetWithCharactersInString:
-                                    @"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"];
             for (id key in form) {
                 if (![key isKindOfClass:[NSString class]])
                     return bad;
@@ -610,8 +608,8 @@ static JSValue LXNative(JSContext *ctx, JSValueConst thisValue, int argc, JSValu
                 [pairs addObject:[NSString
                                      stringWithFormat:
                                          @"%@=%@",
-                                         [key stringByAddingPercentEncodingWithAllowedCharacters:allowed],
-                                         [value stringByAddingPercentEncodingWithAllowedCharacters:allowed]]];
+                                         MCURLComponent(key),
+                                         MCURLComponent(value)]];
             }
             body = [[pairs componentsJoinedByString:@"&"] dataUsingEncoding:NSUTF8StringEncoding];
             headers[@"Content-Type"] = @"application/x-www-form-urlencoded";
@@ -739,8 +737,7 @@ static JSValue LXNative(JSContext *ctx, JSValueConst thisValue, int argc, JSValu
             return bad;
         NSData *d = nil;
         if ([encoding isEqual:@"base64"])
-            d = [[NSData alloc] initWithBase64EncodedString:str
-                                                    options:NSDataBase64DecodingIgnoreUnknownCharacters];
+            d = MCBase64Data(str);
         else if ([encoding isEqual:@"hex"]) {
             NSMutableData *hex = [NSMutableData new];
             for (NSUInteger i = 0; i + 1 < str.length; i += 2) {
@@ -765,7 +762,7 @@ static JSValue LXNative(JSContext *ctx, JSValueConst thisValue, int argc, JSValu
             return bad;
         NSString *enc = [v[@"encoding"] lowercaseString];
         if ([enc isEqual:@"base64"])
-            return [d base64EncodedStringWithOptions:0];
+            return MCBase64String(d);
         if ([enc isEqual:@"hex"]) {
             NSMutableString *s = [NSMutableString new];
             const uint8_t *p = d.bytes;

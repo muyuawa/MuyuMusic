@@ -1,3 +1,5 @@
+> iOS 6 branch: online native formats (MP3/AAC/M4A/WAV/AIFF) wait for a complete download before AVPlayer starts. FLAC continues incremental decoding. The progressive resource-loader behavior described below applies to iOS 7+. No iOS 6 playback acceptance is claimed.
+
 # Playback
 
 `MCPlayer` implements the shared contract in `INTERFACES.md`. Public mutations

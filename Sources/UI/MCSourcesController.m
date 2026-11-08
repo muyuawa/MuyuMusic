@@ -14,6 +14,7 @@ static UITableViewCell *MCSourceCell(UITableViewCellStyle style) {
     UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:style reuseIdentifier:nil];
     MCTheme *theme = [MCTheme sharedTheme];
     cell.backgroundColor = theme.surface;
+    cell.textLabel.backgroundColor = cell.detailTextLabel.backgroundColor = [UIColor clearColor];
     cell.textLabel.textColor = theme.text;
     cell.detailTextLabel.textColor = theme.muted;
     cell.textLabel.font = [UIFont systemFontOfSize:15];
@@ -120,6 +121,7 @@ static NSString *MCSourceText(id value) {
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = self.entry ? @"编辑 API" : @"添加 API";
+    self.tableView.backgroundView = nil;
     self.tableView.backgroundColor = [MCTheme sharedTheme].background;
     self.tableView.rowHeight = 82;
     self.configuration = [self.entry[@"configuration"] mutableCopy]
@@ -200,6 +202,8 @@ static NSString *MCSourceText(id value) {
     if (path.section == 0) {
         UILabel *label =
             [[UILabel alloc] initWithFrame:CGRectMake(15, 8, tableView.bounds.size.width - 30, 22)];
+        label.backgroundColor = [UIColor clearColor];
+        label.opaque = NO;
         label.autoresizingMask = UIViewAutoresizingFlexibleWidth;
         label.text = @[ @"名称", @"请求 URL 模板", @"音频 URL 字段路径" ][path.row];
         label.font = [UIFont systemFontOfSize:13];
@@ -262,6 +266,7 @@ static NSString *MCSourceText(id value) {
     [super viewDidLoad];
     self.title = @"选择本地脚本";
     self.tableView.rowHeight = 56;
+    self.tableView.backgroundView = nil;
     self.tableView.backgroundColor = [MCTheme sharedTheme].background;
     NSString *documents = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0];
     NSMutableArray *files = [NSMutableArray array];
@@ -327,6 +332,7 @@ static NSString *MCSourceText(id value) {
 - (void)reload {
     MCSourceRepository *repository = [MCSourceRepository sharedRepository];
     self.items = repository.catalog;
+    self.tableView.backgroundView = nil;
     self.tableView.backgroundColor = [MCTheme sharedTheme].background;
     self.navigationItem.rightBarButtonItem =
         [[UIBarButtonItem alloc] initWithTitle:repository.busy ? @"取消" : @"刷新"
@@ -451,6 +457,7 @@ static NSString *MCSourceText(id value) {
 }
 - (void)reloadSources {
     self.entries = [MCMusicSources sharedSources].entries;
+    self.tableView.backgroundView = nil;
     self.tableView.backgroundColor = [MCTheme sharedTheme].background;
     [self.tableView reloadData];
 }

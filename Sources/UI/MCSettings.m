@@ -27,11 +27,13 @@ static NSString *MCCacheSize(unsigned long long bytes) {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 - (void)themeChanged {
+    self.tableView.backgroundView = nil;
     self.tableView.backgroundColor = [MCTheme sharedTheme].background;
     [self.tableView reloadData];
 }
 - (void)viewWillAppear:(BOOL)a {
     [super viewWillAppear:a];
+    self.tableView.backgroundView = nil;
     self.tableView.backgroundColor = [MCTheme sharedTheme].background;
     [self.tableView reloadData];
     [self refreshCache];
@@ -64,6 +66,7 @@ static NSString *MCCacheSize(unsigned long long bytes) {
                                                 reuseIdentifier:nil];
     MCTheme *theme = [MCTheme sharedTheme];
     c.backgroundColor = theme.surface;
+    c.textLabel.backgroundColor = c.detailTextLabel.backgroundColor = [UIColor clearColor];
     c.textLabel.textColor = theme.text;
     c.detailTextLabel.textColor = theme.muted;
     c.textLabel.font = [UIFont systemFontOfSize:15];
@@ -107,11 +110,13 @@ static NSString *MCCacheSize(unsigned long long bytes) {
 }
 - (void)darkChanged:(UISwitch *)s {
     [MCTheme sharedTheme].dark = s.on;
+    self.tableView.backgroundView = nil;
     self.tableView.backgroundColor = [MCTheme sharedTheme].background;
     [self.tableView reloadData];
 }
 - (void)followChanged:(UISwitch *)s {
     [MCTheme sharedTheme].followArtwork = s.on;
+    self.tableView.backgroundView = nil;
     self.tableView.backgroundColor = [MCTheme sharedTheme].background;
     [self.tableView reloadData];
 }
@@ -159,7 +164,7 @@ static NSString *MCCacheSize(unsigned long long bytes) {
         [self.navigationController pushViewController:[MCSourcesController new] animated:YES];
     } else if (p.section == 2)
         MCMessage(self, @"暮雨音乐",
-                  @"支持 iOS 7.0 及以上（ARMv7）\n本地音乐 · 网易云音乐\n\n"
+                  @"iOS 6 兼容分支 · ARMv7\n本地音乐 · 网易云音乐\n\n"
                   @"开源组件：FLAC（BSD）、curl、Mbed TLS（Apache 2.0）。完整许可证随应用提供。");
 }
 @end

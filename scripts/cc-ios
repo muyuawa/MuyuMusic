@@ -2,4 +2,4 @@
 set -euo pipefail
 task_root="$(cd "$(dirname "$0")/.." && pwd)"
 task_sdk="${IOS_SDK:-$task_root/.deps/sdk71/iPhoneOS7.1.sdk}"
-exec /usr/bin/clang -target armv7-apple-ios7.0 -isysroot "$task_sdk" -Wno-unused-command-line-argument -fuse-ld=/Library/Developer/CommandLineTools/usr/bin/ld-classic "$@"
+exec /usr/bin/clang -target armv7-apple-ios6.0 -isysroot "$task_sdk" -Wno-unused-command-line-argument -fuse-ld=/Library/Developer/CommandLineTools/usr/bin/ld-classic "$@"

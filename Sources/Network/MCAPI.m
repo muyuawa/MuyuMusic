@@ -1,4 +1,5 @@
 #import "MCAPI.h"
+#import "MCEncoding.h"
 #import "MCHTTPClient.h"
 #import "MCEAPI.h"
 #import <Security/Security.h>
@@ -29,9 +30,7 @@ static void MCComplete(MCAPICompletion completion, id result, NSError *error) {
         });
 }
 static NSString *MCEncode(NSString *s) {
-    NSMutableCharacterSet *allowed = [[NSCharacterSet alphanumericCharacterSet] mutableCopy];
-    [allowed addCharactersInString:@"-._~"];
-    return [s stringByAddingPercentEncodingWithAllowedCharacters:allowed] ?: @"";
+    return MCURLComponent(s);
 }
 static NSArray *MCTracks(id songs) {
     NSMutableArray *result = [NSMutableArray array];
