@@ -1,3 +1,4 @@
 #import <UIKit/UIKit.h>
-@interface MCSourcesController : UITableViewController
+#import "MCFlatControls.h"
+@interface MCSourcesController : MCFlatTableController
 @end

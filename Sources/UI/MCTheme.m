@@ -20,6 +20,38 @@ static UIImage *MCThemeBarImage(UIColor *color) {
     UIGraphicsEndImageContext();
     return [image resizableImageWithCapInsets:UIEdgeInsetsZero];
 }
+static UIImage *MCThemeFieldImage(UIColor *color) {
+    UIGraphicsBeginImageContextWithOptions(CGSizeMake(20, 36), NO, 0);
+    [color setFill];
+    [[UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, 20, 36) cornerRadius:8] fill];
+    UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    return [image resizableImageWithCapInsets:UIEdgeInsetsMake(9, 9, 9, 9)];
+}
+static UIImage *MCThemeIcon(UIImage *source, UIColor *color) {
+    if (!source) return nil;
+    UIGraphicsBeginImageContextWithOptions(source.size, NO, 0);
+    CGRect rect = (CGRect){CGPointZero, source.size};
+    [source drawInRect:rect];
+    [color setFill];
+    UIRectFillUsingBlendMode(rect, kCGBlendModeSourceIn);
+    UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    return image;
+}
+static void MCThemeSearchText(UIView *view, MCTheme *theme) {
+    if ([view isKindOfClass:[UITextField class]]) {
+        UITextField *field = (UITextField *)view;
+        field.textColor = theme.text;
+        field.font = [UIFont systemFontOfSize:15];
+        field.borderStyle = UITextBorderStyleNone;
+        field.backgroundColor = [UIColor clearColor];
+        if (field.placeholder.length)
+            field.attributedPlaceholder = [[NSAttributedString alloc] initWithString:field.placeholder
+                attributes:@{NSForegroundColorAttributeName:theme.muted}];
+    }
+    for (UIView *child in view.subviews) MCThemeSearchText(child, theme);
+}
 static UIImage *MCThemeBackImage(UIColor *color) {
     UIGraphicsBeginImageContextWithOptions(CGSizeMake(26, 30), NO, 0);
     [color setStroke];
@@ -158,6 +190,7 @@ static UIImage *MCThemeBackImage(UIColor *color) {
 }
 - (void)applyToNavigationBar:(UINavigationBar *)bar {
     bar.translucent = NO;
+    bar.shadowImage = MCThemeBarImage([UIColor clearColor]);
     [bar setBackgroundImage:MCThemeBarImage(self.surface) forBarMetrics:UIBarMetricsDefault];
     if (@available(iOS 7.0, *)) {
         bar.barTintColor = self.surface;
@@ -190,38 +223,75 @@ static UIImage *MCThemeBackImage(UIColor *color) {
     }
 }
 - (void)applyToTabBar:(UITabBar *)bar {
+    if (!bar) return;
+    UIImage *clear = MCThemeBarImage([UIColor clearColor]);
     bar.backgroundImage = MCThemeBarImage(self.surface);
+    bar.shadowImage = clear;
+    bar.selectionIndicatorImage = clear;
+    bar.selectedImageTintColor = self.primary;
     if (@available(iOS 7.0, *)) {
         bar.barTintColor = self.surface;
         bar.tintColor = self.primary;
         bar.translucent = NO;
-    } else {
-        bar.tintColor = self.surface;
-        bar.selectedImageTintColor = self.primary;
+    } else bar.tintColor = self.surface;
+    for (UITabBarItem *item in bar.items) {
+        [item setFinishedSelectedImage:MCThemeIcon(item.image, self.primary)
+          withFinishedUnselectedImage:MCThemeIcon(item.image, self.muted)];
+        for (NSNumber *value in @[@(UIControlStateNormal), @(UIControlStateHighlighted),
+                                  @(UIControlStateSelected), @(UIControlStateSelected | UIControlStateHighlighted)]) {
+            UIControlState state = value.unsignedIntegerValue;
+            BOOL active = state & (UIControlStateSelected | UIControlStateHighlighted);
+            [item setTitleTextAttributes:@{UITextAttributeFont:[UIFont systemFontOfSize:11],
+                UITextAttributeTextColor:active ? self.primary : self.muted,
+                UITextAttributeTextShadowColor:[UIColor clearColor],
+                UITextAttributeTextShadowOffset:[NSValue valueWithUIOffset:UIOffsetZero]} forState:state];
+        }
     }
 }
 - (void)applyToSearchBar:(UISearchBar *)bar {
+    if (!bar) return;
+    UIColor *surface = self.dark ? self.surface : [UIColor whiteColor];
+    UIColor *field = self.dark ? MCRGB(0x343D4D) : MCRGB(0xF0F2F5);
+    bar.backgroundColor = surface;
+    bar.backgroundImage = MCThemeBarImage(surface);
+    bar.translucent = NO;
+    [bar setSearchFieldBackgroundImage:MCThemeFieldImage(field) forState:UIControlStateNormal];
+    [bar setSearchFieldBackgroundImage:MCThemeFieldImage(field) forState:UIControlStateDisabled];
     if (@available(iOS 7.0, *)) {
-        bar.barTintColor = self.surface;
+        bar.barTintColor = surface;
         bar.tintColor = self.primary;
-    } else {
-        bar.tintColor = self.surface;
-        bar.barStyle = self.dark ? UIBarStyleBlack : UIBarStyleDefault;
-    }
+    } else bar.tintColor = surface;
+    MCThemeSearchText(bar, self);
 }
 - (void)applyToSegmentedControl:(UISegmentedControl *)control {
-    control.tintColor = self.primary;
-    [control setBackgroundImage:MCThemeBarImage(self.surface) forState:UIControlStateNormal barMetrics:UIBarMetricsDefault];
-    [control setBackgroundImage:MCThemeBarImage(self.primary) forState:UIControlStateSelected barMetrics:UIBarMetricsDefault];
-    [control setTitleTextAttributes:@{UITextAttributeFont:[UIFont systemFontOfSize:13],
-        UITextAttributeTextColor:self.text, UITextAttributeTextShadowColor:[UIColor clearColor]}
-        forState:UIControlStateNormal];
-    [control setTitleTextAttributes:@{UITextAttributeFont:[UIFont boldSystemFontOfSize:13],
-        UITextAttributeTextColor:self.onPrimary, UITextAttributeTextShadowColor:[UIColor clearColor]}
-        forState:UIControlStateSelected];
+    if (!control) return;
+    // Supplying every divider is essential on iOS 6: the native selected
+    // divider otherwise contributes its blue glossy edge to custom images.
+    UIColor *surface = self.dark ? self.surface : [UIColor whiteColor];
+    UIImage *normal = MCThemeBarImage(surface);
+    UIImage *selected = MCThemeBarImage(self.primary);
+    UIImage *pressed = MCThemeBarImage(self.dark ? MCRGB(0x3A4355) : MCRGB(0xE8ECF2));
+    UIImage *divider = MCThemeBarImage([UIColor clearColor]);
+    NSArray *states = @[@(UIControlStateNormal), @(UIControlStateSelected),
+                        @(UIControlStateHighlighted), @(UIControlStateSelected | UIControlStateHighlighted),
+                        @(UIControlStateDisabled), @(UIControlStateSelected | UIControlStateDisabled)];
+    control.tintColor = self.muted;
+    for (NSNumber *value in states) {
+        UIControlState state = value.unsignedIntegerValue;
+        BOOL active = state & UIControlStateSelected;
+        [control setBackgroundImage:active ? selected : (state & UIControlStateHighlighted) ? pressed : normal
+                          forState:state barMetrics:UIBarMetricsDefault];
+        [control setTitleTextAttributes:@{UITextAttributeFont:active ? [UIFont boldSystemFontOfSize:13] : [UIFont systemFontOfSize:13],
+            UITextAttributeTextColor:active ? self.onPrimary : self.text,
+            UITextAttributeTextShadowColor:[UIColor clearColor],
+            UITextAttributeTextShadowOffset:[NSValue valueWithUIOffset:UIOffsetZero]} forState:state];
+        for (NSNumber *right in states)
+            [control setDividerImage:divider forLeftSegmentState:state
+                  rightSegmentState:right.unsignedIntegerValue barMetrics:UIBarMetricsDefault];
+    }
     control.layer.cornerRadius = 7;
-    control.layer.borderWidth = 1;
-    control.layer.borderColor = self.primary.CGColor;
+    control.layer.borderWidth = 0;
+    control.layer.shadowOpacity = 0;
     control.clipsToBounds = YES;
 }
 - (void)apply {

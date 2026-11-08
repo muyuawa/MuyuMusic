@@ -1,5 +1,6 @@
 #import "MCUI.h"
 #import "MCTheme.h"
+#import "MCFlatControls.h"
 #import "MCSourcesController.h"
 #import "MCMusicSources.h"
 #import "MCDialogs.h"
@@ -62,7 +63,7 @@ static NSString *MCCacheSize(unsigned long long bytes) {
     return @[ @"外观", @"播放与缓存", @"关于" ][s];
 }
 - (UITableViewCell *)tableView:(UITableView *)t cellForRowAtIndexPath:(NSIndexPath *)p {
-    UITableViewCell *c = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1
+    UITableViewCell *c = [[MCFlatTableCell alloc] initWithStyle:UITableViewCellStyleValue1
                                                 reuseIdentifier:nil];
     MCTheme *theme = [MCTheme sharedTheme];
     c.backgroundColor = theme.surface;
@@ -73,7 +74,7 @@ static NSString *MCCacheSize(unsigned long long bytes) {
     if (p.section == 0) {
         c.textLabel.text = @[ @"深色模式", @"跟随封面配色", @"主题色", @"自定义 HEX" ][p.row];
         if (p.row <= 1) {
-            UISwitch *s = [UISwitch new];
+            MCFlatSwitch *s = [MCFlatSwitch new];
             s.on = p.row == 0 ? theme.dark : theme.followArtwork;
             [s addTarget:self
                           action:p.row == 0 ? @selector(darkChanged:) : @selector(followChanged:)
@@ -108,13 +109,13 @@ static NSString *MCCacheSize(unsigned long long bytes) {
                                         ?: @""];
     return c;
 }
-- (void)darkChanged:(UISwitch *)s {
+- (void)darkChanged:(MCFlatSwitch *)s {
     [MCTheme sharedTheme].dark = s.on;
     self.tableView.backgroundView = nil;
     self.tableView.backgroundColor = [MCTheme sharedTheme].background;
     [self.tableView reloadData];
 }
-- (void)followChanged:(UISwitch *)s {
+- (void)followChanged:(MCFlatSwitch *)s {
     [MCTheme sharedTheme].followArtwork = s.on;
     self.tableView.backgroundView = nil;
     self.tableView.backgroundColor = [MCTheme sharedTheme].background;

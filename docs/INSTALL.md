@@ -1,8 +1,8 @@
 # iOS 6 分支安装与测试
 
-本地测试包：`dist/MuyuMusic-1.3.1-ios6-armv7.ipa`，版本 1.3.1 / 构建 13，最低 iOS 6.0、ARMv7。本分支尚未发布到 GitHub，原版 Releases 不包含此测试包。
+本地测试包：`dist/MuyuMusic-1.3.1-ios6-armv7.ipa`，版本 1.3.1 / 构建 14，最低 iOS 6.0、ARMv7。本分支尚未发布到 GitHub，原版 Releases 不包含此测试包。
 
-IPA 使用 ad-hoc 签名（主 SHA-1 和附加 SHA-256）。设备须已越狱，并具备适用于当前固件的 unsigned/ad-hoc IPA 安装支持。本次按用户要求，已覆盖安装到连接的 iPod4,1 / iOS 7.1.2，并回读确认构建 13；没有安装或更改越狱工具。iOS 6 真机验收仍待进行。
+IPA 使用 ad-hoc 签名（主 SHA-1 和附加 SHA-256）。设备须已越狱，并具备适用于当前固件的 unsigned/ad-hoc IPA 安装支持。本次按用户要求，已覆盖安装到连接的 iPod4,1 / iOS 7.1.2，并回读确认构建 14；没有安装或更改越狱工具。iOS 6 真机验收仍待进行。
 
 ## 安装
 

@@ -3,6 +3,7 @@
 #import "MCSourceRepository.h"
 #import "MCSourceSecurity.h"
 #import "MCTheme.h"
+#import "MCFlatControls.h"
 #import "MCDialogs.h"
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -11,7 +12,7 @@
 #include <stdlib.h>
 
 static UITableViewCell *MCSourceCell(UITableViewCellStyle style) {
-    UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:style reuseIdentifier:nil];
+    UITableViewCell *cell = [[MCFlatTableCell alloc] initWithStyle:style reuseIdentifier:nil];
     MCTheme *theme = [MCTheme sharedTheme];
     cell.backgroundColor = theme.surface;
     cell.textLabel.backgroundColor = cell.detailTextLabel.backgroundColor = [UIColor clearColor];
@@ -111,7 +112,7 @@ static NSString *MCSourceText(id value) {
 }
 @end
 
-@interface MCSourceAPIController : UITableViewController <UITextFieldDelegate>
+@interface MCSourceAPIController : MCFlatTableController <UITextFieldDelegate>
 @property (nonatomic, copy) NSDictionary *entry;
 @property (nonatomic, strong) NSMutableDictionary *configuration;
 @property (nonatomic, strong) NSArray *fields;
@@ -257,7 +258,7 @@ static NSString *MCSourceText(id value) {
 }
 @end
 
-@interface MCSourceFilesController : UITableViewController
+@interface MCSourceFilesController : MCFlatTableController
 @property (nonatomic, copy) NSArray *files;
 @property (nonatomic, copy) void (^picked)(NSString *);
 @end
@@ -295,7 +296,7 @@ static NSString *MCSourceText(id value) {
 }
 @end
 
-@interface MCSourceRepositoryController : UITableViewController
+@interface MCSourceRepositoryController : MCFlatTableController
 @property (nonatomic, copy) NSArray *items;
 @end
 @implementation MCSourceRepositoryController
@@ -505,7 +506,7 @@ static NSString *MCSourceText(id value) {
             cell.detailTextLabel.numberOfLines = 2;
         } else if (path.row == 2) {
             cell.textLabel.text = @"自动同步";
-            UISwitch *toggle = [UISwitch new];
+            MCFlatSwitch *toggle = [MCFlatSwitch new];
             toggle.on = repository.autoSyncEnabled;
             toggle.onTintColor = [MCTheme sharedTheme].primary;
             toggle.accessibilityLabel = @"每天回到前台时同步已订阅音源";
@@ -523,7 +524,7 @@ static NSString *MCSourceText(id value) {
         } else {
             cell.textLabel.text = @"仅允许 HTTPS";
             cell.detailTextLabel.text = @"自定义音源的请求与播放地址";
-            UISwitch *toggle = [UISwitch new];
+            MCFlatSwitch *toggle = [MCFlatSwitch new];
             toggle.on = MCSourceHTTPSOnly();
             toggle.onTintColor = [MCTheme sharedTheme].primary;
             toggle.accessibilityLabel = @"仅允许 HTTPS，关闭后允许自定义音源使用 HTTP";
@@ -596,10 +597,10 @@ static NSString *MCSourceText(id value) {
     } else
         [self actionsForEntry:self.entries[path.row]];
 }
-- (void)automaticChanged:(UISwitch *)toggle {
+- (void)automaticChanged:(MCFlatSwitch *)toggle {
     [MCSourceRepository sharedRepository].autoSyncEnabled = toggle.on;
 }
-- (void)httpsChanged:(UISwitch *)toggle {
+- (void)httpsChanged:(MCFlatSwitch *)toggle {
     MCSetSourceHTTPSOnly(toggle.on);
 }
 - (void)actionsForEntry:(NSDictionary *)entry {

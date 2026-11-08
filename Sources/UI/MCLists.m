@@ -1,5 +1,6 @@
 #import "MCUI.h"
 #import "MCTheme.h"
+#import "MCFlatControls.h"
 #import "MCArtwork.h"
 #import "MCDialogs.h"
 #import "MCAPI.h"
@@ -21,7 +22,7 @@ static NSString *MCTime(double t) {
     return [NSString stringWithFormat:@"%u:%02u", (unsigned)t / 60, (unsigned)t % 60];
 }
 
-@interface MCMusicCell : UITableViewCell
+@interface MCMusicCell : MCFlatTableCell
 @end
 @implementation MCMusicCell
 - (void)layoutSubviews {
@@ -35,7 +36,7 @@ static NSString *MCTime(double t) {
 }
 @end
 
-@interface MCListController : UITableViewController <UISearchBarDelegate>
+@interface MCListController : MCFlatTableController <UISearchBarDelegate, UIGestureRecognizerDelegate>
 @property (nonatomic, copy) NSString *kind;
 @property (nonatomic, copy) NSString *playlistID;
 @property (nonatomic, strong) NSArray *items;
@@ -50,6 +51,8 @@ static NSString *MCTime(double t) {
 @property (nonatomic) BOOL more;
 @property (nonatomic, copy) NSString *catalogNotice;
 @property (nonatomic) BOOL loginRequired;
+@property (nonatomic) BOOL flatEditing;
+@property (nonatomic, strong) UILabel *pullHint;
 - (void)reload;
 - (void)received:(NSArray *)items error:(NSError *)error;
 - (void)receivedCatalog:(NSDictionary *)result error:(NSError *)error;
@@ -107,8 +110,17 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     self.tableView.contentInset = UIEdgeInsetsMake(0, 0, 52, 0);
     self.tableView.scrollIndicatorInsets = UIEdgeInsetsMake(0, 0, 52, 0);
-    self.refreshControl = [UIRefreshControl new];
-    [self.refreshControl addTarget:self action:@selector(reload) forControlEvents:UIControlEventValueChanged];
+    self.pullHint = [[UILabel alloc] initWithFrame:CGRectMake(0, -48, self.tableView.bounds.size.width, 48)];
+    self.pullHint.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    self.pullHint.backgroundColor = [UIColor clearColor];
+    self.pullHint.textAlignment = NSTextAlignmentCenter;
+    self.pullHint.font = [UIFont systemFontOfSize:13];
+    self.pullHint.hidden = YES;
+    [self.tableView addSubview:self.pullHint];
+    UISwipeGestureRecognizer *swipe = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(flatSwipe:)];
+    swipe.direction = UISwipeGestureRecognizerDirectionLeft;
+    swipe.delegate = self;
+    [self.tableView addGestureRecognizer:swipe];
     if ([self.kind isEqual:@"tracks"] || [self.kind isEqual:@"local"] ||
         [self.kind isEqual:@"libraryTracks"]) {
         self.navigationItem.rightBarButtonItem =
@@ -118,7 +130,8 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
                                             action:@selector(playAll)];
     }
     if ([self.kind isEqual:@"queue"]) {
-        self.navigationItem.rightBarButtonItem = self.editButtonItem;
+        self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"编辑"
+            style:UIBarButtonItemStylePlain target:self action:@selector(toggleFlatEditing)];
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(queueChanged)
                                                      name:MCPlayerDidChangeNotification
@@ -179,8 +192,10 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
     self.tableView.backgroundColor = t.background;
     [t applyToNavigationBar:self.navigationController.navigationBar];
     [t applyToSearchBar:self.search];
+    if (self.search) self.tableView.tableHeaderView.backgroundColor = t.dark ? t.surface : [UIColor whiteColor];
     [t applyToSegmentedControl:self.categories];
     self.status.textColor = t.muted;
+    self.pullHint.textColor = t.muted;
     if (@available(iOS 7.0, *)) [self setNeedsStatusBarAppearanceUpdate];
     [self.tableView reloadData];
 }
@@ -267,7 +282,7 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
 - (void)reload {
     if (self.busy) {
         self.pendingReload = YES;
-        [self.refreshControl endRefreshing];
+        self.pullHint.text = @"下拉刷新";
         return;
     }
     self.pendingReload = NO;
@@ -282,7 +297,8 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
     if ([self.kind isEqual:@"search"]) {
         if (!self.query.length) {
             [self received:@[] error:nil];
-            [self footer:@"输入关键词搜索歌曲" retry:NO];
+            NSString *kind = @[@"歌曲", @"歌手", @"专辑", @"歌单"][MAX(0, MIN(3, self.categories.selectedSegmentIndex))];
+            [self footer:[@"输入关键词搜索" stringByAppendingString:kind] retry:NO];
             return;
         }
         [self runSearch:NO];
@@ -332,7 +348,7 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
         [self reload];
         return;
     }
-    [self.refreshControl endRefreshing];
+    self.pullHint.text = @"下拉刷新";
     if (!error)
         self.items = [items isKindOfClass:[NSArray class]] ? items : @[];
     [self.tableView reloadData];
@@ -415,8 +431,16 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
         track ? [NSString stringWithFormat:@"%@ · %@  %@", MCS(d[@"artist"]), MCS(d[@"album"]),
                                            MCTime([d[@"duration"] doubleValue])]
               : MCS(d[@"subtitle"]);
-    c.accessoryType =
-        track ? UITableViewCellAccessoryDetailDisclosureButton : UITableViewCellAccessoryDisclosureIndicator;
+    BOOL playlistMenu = [self.kind isEqual:@"libraryPlaylists"];
+    c.accessoryType = track || playlistMenu ? UITableViewCellAccessoryNone : UITableViewCellAccessoryDisclosureIndicator;
+    if (track || playlistMenu) {
+        MCPlaybackButton *button = [[MCPlaybackButton alloc] initWithFrame:CGRectMake(0, 0, 44, 44)];
+        button.icon = MCPlaybackIconDetails;
+        button.ink = theme.muted;
+        button.accessibilityLabel = playlistMenu ? @"歌单操作" : @"歌曲操作";
+        [button addTarget:self action:@selector(trackAccessoryTapped:) forControlEvents:UIControlEventTouchUpInside];
+        c.accessoryView = button;
+    }
     c.imageView.backgroundColor = theme.background;
     c.imageView.layer.cornerRadius = 8;
     c.imageView.clipsToBounds = YES;
@@ -431,6 +455,7 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
 - (void)tableView:(UITableView *)t didSelectRowAtIndexPath:(NSIndexPath *)p {
     [t deselectRowAtIndexPath:p animated:YES];
     if ([self isTrackKind]) {
+        if (self.flatEditing && [self.kind isEqual:@"queue"]) { [self editQueueRow:p.row]; return; }
         [[MCPlayer sharedPlayer] playTracks:self.items index:p.row];
         MCPushNow(self);
     } else if ([self.kind isEqual:@"libraryPlaylists"]) {
@@ -447,6 +472,14 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
         [self.navigationController pushViewController:v animated:YES];
     } else
         MCOpenCatalog(self, self.items[p.row], [self effectiveKind]);
+}
+- (void)trackAccessoryTapped:(UIButton *)button {
+    CGPoint point = [button convertPoint:CGPointMake(CGRectGetMidX(button.bounds), CGRectGetMidY(button.bounds))
+                                  toView:self.tableView];
+    NSIndexPath *path = [self.tableView indexPathForRowAtPoint:point];
+    if (path && [self.kind isEqual:@"libraryPlaylists"]) [self editPlaylistRow:path.row];
+    else if (path && self.flatEditing && [self.kind isEqual:@"queue"]) [self editQueueRow:path.row];
+    else if (path) [self tableView:self.tableView accessoryButtonTappedForRowWithIndexPath:path];
 }
 - (void)tableView:(UITableView *)t accessoryButtonTappedForRowWithIndexPath:(NSIndexPath *)p {
     (void)t;
@@ -525,36 +558,87 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
         });
     }];
 }
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView {
+    CGFloat pull = -scrollView.contentOffset.y - scrollView.contentInset.top;
+    self.pullHint.hidden = pull < 4;
+    self.pullHint.text = self.busy ? @"正在刷新…" : pull > 60 ? @"松开刷新" : @"下拉刷新";
+}
+- (void)scrollViewDidEndDragging:(UIScrollView *)scrollView willDecelerate:(BOOL)decelerate {
+    (void)decelerate;
+    if (!self.busy && -scrollView.contentOffset.y - scrollView.contentInset.top > 60) [self reload];
+}
+- (void)toggleFlatEditing {
+    self.flatEditing = !self.flatEditing;
+    self.navigationItem.rightBarButtonItem.title = self.flatEditing ? @"完成" : @"编辑";
+    [self footer:self.flatEditing ? @"点歌曲或右侧按钮，调整顺序或移除歌曲。" : @"" retry:NO];
+}
+- (void)editQueueRow:(NSUInteger)row {
+    NSArray *queue = [MCPlayer sharedPlayer].queue;
+    if (row >= queue.count) return;
+    NSDictionary *track = queue[row];
+    __weak MCListController *weakSelf = self;
+    BOOL (^stillCurrent)(void) = ^BOOL {
+        NSArray *current = [MCPlayer sharedPlayer].queue;
+        if (row < current.count && [current[row] isEqual:track]) return YES;
+        MCMessage(weakSelf, @"队列已变化", @"请重新打开此歌曲的操作菜单。");
+        return NO;
+    };
+    MCChoose(self, MCS(track[@"title"]), @[@"上移", @"下移", @"移动到位置…", @"移除歌曲"], ^(NSInteger index) {
+        if (!stillCurrent()) return;
+        MCPlayer *player = [MCPlayer sharedPlayer];
+        if (index == 0 && row > 0) [player moveQueueIndex:row toIndex:row - 1];
+        else if (index == 1 && row + 1 < player.queue.count) [player moveQueueIndex:row toIndex:row + 1];
+        else if (index == 3) [player removeQueueIndex:row];
+        else if (index == 2) MCInput(@"移动到位置", @"输入目标序号，从 1 开始。",
+            [NSString stringWithFormat:@"%lu", (unsigned long)row + 1], ^(NSString *value) {
+                NSScanner *scanner = [NSScanner scannerWithString:value];
+                NSInteger target = 0;
+                if (![scanner scanInteger:&target] || !scanner.isAtEnd || target < 1 ||
+                    (NSUInteger)target > [MCPlayer sharedPlayer].queue.count) {
+                    MCMessage(weakSelf, @"位置无效", @"请输入队列范围内的整数序号。"); return;
+                }
+                if (stillCurrent()) [[MCPlayer sharedPlayer] moveQueueIndex:row toIndex:(NSUInteger)target - 1];
+            });
+    });
+}
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture
+    shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)other {
+    return [gesture isKindOfClass:[UISwipeGestureRecognizer class]] ||
+           [other isKindOfClass:[UISwipeGestureRecognizer class]];
+}
+- (void)editPlaylistRow:(NSUInteger)row {
+    if (row >= self.items.count) return;
+    NSDictionary *item = self.items[row];
+    NSString *identifier = MCS(item[@"id"]);
+    __weak MCListController *weakSelf = self;
+    MCChoose(self, MCS(item[@"title"]), @[@"打开歌单", @"删除歌单"], ^(NSInteger choice) {
+        MCListController *controller = weakSelf;
+        if (choice == 1)
+            MCConfirm(@"删除歌单", MCS(item[@"title"]), @"删除", ^{ [[MCLibrary sharedLibrary] deletePlaylist:identifier]; });
+        else if (controller && row < controller.items.count && [controller.items[row] isEqual:item])
+            [controller tableView:controller.tableView didSelectRowAtIndexPath:[NSIndexPath indexPathForRow:row inSection:0]];
+    });
+}
+- (void)flatSwipe:(UISwipeGestureRecognizer *)gesture {
+    NSIndexPath *path = [self.tableView indexPathForRowAtPoint:[gesture locationInView:self.tableView]];
+    if (!path || (NSUInteger)path.row >= self.items.count) return;
+    if ([self.kind isEqual:@"queue"]) { [self editQueueRow:path.row]; return; }
+    NSDictionary *item = self.items[path.row];
+    NSString *identifier = MCS(item[@"id"]), *playlist = self.playlistID;
+    if ([self.kind isEqual:@"libraryPlaylists"])
+        MCConfirm(@"删除歌单", MCS(item[@"title"]), @"删除", ^{ [[MCLibrary sharedLibrary] deletePlaylist:identifier]; });
+    else if (playlist.length)
+        MCConfirm(@"从歌单移除", MCS(item[@"title"]), @"移除", ^{ [[MCLibrary sharedLibrary] removeTrack:identifier fromPlaylist:playlist]; });
+}
 - (BOOL)tableView:(UITableView *)t canEditRowAtIndexPath:(NSIndexPath *)p {
     (void)t;
     (void)p;
-    return [self.kind isEqual:@"queue"] || [self.kind isEqual:@"libraryPlaylists"] || self.playlistID.length;
+    return NO; // Editing actions use flat menus rather than native iOS 6 chrome.
 }
-- (void)tableView:(UITableView *)t
-    commitEditingStyle:(UITableViewCellEditingStyle)style
-     forRowAtIndexPath:(NSIndexPath *)p {
-    (void)t;
-    if (style != UITableViewCellEditingStyleDelete)
-        return;
-    if ([self.kind isEqual:@"queue"])
-        [[MCPlayer sharedPlayer] removeQueueIndex:p.row];
-    else if (self.playlistID.length)
-        [[MCLibrary sharedLibrary] removeTrack:self.items[p.row][@"id"] fromPlaylist:self.playlistID];
-    else
-        [[MCLibrary sharedLibrary] deletePlaylist:self.items[p.row][@"id"]];
-}
-- (BOOL)tableView:(UITableView *)t canMoveRowAtIndexPath:(NSIndexPath *)p {
-    (void)t;
-    (void)p;
-    return [self.kind isEqual:@"queue"];
-}
-- (void)tableView:(UITableView *)t moveRowAtIndexPath:(NSIndexPath *)from toIndexPath:(NSIndexPath *)to {
-    (void)t;
-    [[MCPlayer sharedPlayer] moveQueueIndex:from.row toIndex:to.row];
-}
+
 @end
 
-@interface MCLibraryController : UITableViewController
+@interface MCLibraryController : MCFlatTableController
 @property (nonatomic, strong) UILabel *instructions;
 @end
 @implementation MCLibraryController
@@ -616,7 +700,7 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
 - (UITableViewCell *)tableView:(UITableView *)t cellForRowAtIndexPath:(NSIndexPath *)p {
     UITableViewCell *c = [t dequeueReusableCellWithIdentifier:@"menu"];
     if (!c)
-        c = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"menu"];
+        c = [[MCFlatTableCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"menu"];
     c.textLabel.text = @[
         @"本地歌曲", @"本地收藏", @"最近播放", @"本地歌单", @"我的网易云歌单",
         @"账号与扫码登录"
@@ -692,9 +776,8 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
         });
     if (row == 3)
         v.navigationItem.rightBarButtonItem =
-            [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd
-                                                          target:self
-                                                          action:@selector(newPlaylist)];
+            [[UIBarButtonItem alloc] initWithTitle:@"新建" style:UIBarButtonItemStylePlain
+                                         target:self action:@selector(newPlaylist)];
     [self.navigationController pushViewController:v animated:YES];
 }
 @end
@@ -720,9 +803,20 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
 }
 - (void)navigationController:(UINavigationController *)navigationController
     willShowViewController:(UIViewController *)viewController animated:(BOOL)animated {
-    (void)viewController; (void)animated;
+    (void)animated;
+    NSUInteger index = [navigationController.viewControllers indexOfObjectIdenticalTo:viewController];
+    if (index != NSNotFound && index > 0 &&
+        (!viewController.navigationItem.leftBarButtonItem ||
+         [viewController.navigationItem.leftBarButtonItem.customView isKindOfClass:[MCFlatBackButton class]])) {
+        UIViewController *previous = navigationController.viewControllers[index - 1];
+        MCFlatBackButton *back = [[MCFlatBackButton alloc] initWithTitle:previous.title ?: @"返回"];
+        [back addTarget:self action:@selector(flatBack) forControlEvents:UIControlEventTouchUpInside];
+        viewController.navigationItem.hidesBackButton = YES;
+        viewController.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithCustomView:back];
+    }
     [[MCTheme sharedTheme] applyToNavigationBar:navigationController.navigationBar];
 }
+- (void)flatBack { [self popViewControllerAnimated:YES]; }
 - (UIStatusBarStyle)preferredStatusBarStyle {
     return [MCTheme sharedTheme].dark ? UIStatusBarStyleBlackOpaque : UIStatusBarStyleDefault;
 }
