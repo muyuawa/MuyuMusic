@@ -14,3 +14,5 @@ clang -fobjc-arc -fblocks -Wall -Wextra -Wno-deprecated-declarations -ISources/N
 "$out-api"
 clang -fobjc-arc -fblocks -Wall -Wextra -Wno-deprecated-declarations -ISources/Network -framework Foundation -framework Security "$@" Sources/Network/MCEAPI.m Sources/Network/MCHTTPClient.m Sources/Network/MCAPI.m tests/daily_api.m -o "$out-daily"
 "$out-daily"
+clang -fobjc-arc -fblocks -Wall -Wextra -Wno-deprecated-declarations -ISources/Network -framework Foundation -framework Security "$@" Sources/Network/MCEAPI.m Sources/Network/MCHTTPClient.m Sources/Network/MCAPI.m tests/playlist_api.m -o "$out-playlists"
+"$out-playlists"

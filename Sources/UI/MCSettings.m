@@ -4,6 +4,7 @@
 #import "MCSourcesController.h"
 #import "MCMusicSources.h"
 #import "MCDialogs.h"
+#import "MCLegal.h"
 #import "MCArtwork.h"
 #import "MCPlayer.h"
 #import "MCAudioCache.h"
@@ -52,7 +53,7 @@ static NSString *MCCacheSize(unsigned long long bytes) {
 }
 - (NSInteger)tableView:(UITableView *)t numberOfRowsInSection:(NSInteger)s {
     (void)t;
-    return s == 0 ? 4 : s == 1 ? 5 : 1;
+    return s == 0 ? 4 : s == 1 ? 5 : 2;
 }
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
     (void)tableView;
@@ -102,6 +103,9 @@ static NSString *MCCacheSize(unsigned long long bytes) {
             c.detailTextLabel.text = [MCMusicSources sharedSources].selectedEntry[@"name"];
             c.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
         }
+    } else if (p.row == 1) {
+        c.textLabel.text = @"使用协议";
+        c.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     } else
         c.textLabel.text = [@"Muyu Cloud Music "
             stringByAppendingString:[[NSBundle mainBundle]
@@ -163,7 +167,9 @@ static NSString *MCCacheSize(unsigned long long bytes) {
         }];
     } else if (p.section == 1 && p.row == 4) {
         [self.navigationController pushViewController:[MCSourcesController new] animated:YES];
-    } else if (p.section == 2)
+    } else if (p.section == 2 && p.row == 1)
+        MCMessage(self, @"使用协议", MCUsageAgreementText);
+    else if (p.section == 2)
         MCMessage(self, @"暮雨音乐",
                   @"iOS 6 兼容分支 · ARMv7\n本地音乐 · 网易云音乐\n\n"
                   @"开源组件：FLAC（BSD）、curl、Mbed TLS（Apache 2.0）。完整许可证随应用提供。");

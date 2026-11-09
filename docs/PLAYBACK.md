@@ -145,3 +145,8 @@ rapid track changes.
 ## Release behavior (1.1.0)
 
 Continuous playback snapshots and diagnostic counters have been removed. Startup removes the legacy PlaybackDiagnostics.json file; normal errors, buffering state and retries remain. PCM buffering and queue recovery are unchanged.
+
+
+## iOS 6 分支构建 15 的播放界面
+
+底部托盘上边缘为随主题变化的两点高播放进度线，右侧依次为上一曲、播放/暂停、下一曲；托盘左滑下一曲、右滑上一曲。上一曲沿用播放器原有语义（播放超过三秒先从头开始）。全屏播放页左滑显示歌词、右滑返回封面，歌词支持纵向滚动；拖动进度条和点按按钮不触发横滑。全屏右上角始终预留队列与歌曲操作菜单的空间。

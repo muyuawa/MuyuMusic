@@ -588,6 +588,35 @@ static NSArray *MCCatalog(id items) {
             }];
     }];
 }
+- (void)editablePlaylists:(MCAPICompletion)completion {
+    if (![self requireAccount:completion]) return;
+    [self withUID:^(NSString *uid, NSError *error) {
+        if (!uid) {
+            MCComplete(completion, nil, error ?: MCAPIError(301, @"登录已失效，请重新扫码"));
+            return;
+        }
+        [self fetchUserPlaylists:uid offset:0 accumulated:[NSMutableArray array]
+                     completion:^(id result, NSError *failure) {
+            NSMutableArray *owned = [NSMutableArray array];
+            for (NSDictionary *item in MCList(result))
+                if ([item[@"creatorID"] isEqual:uid]) [owned addObject:item];
+            MCComplete(completion, failure ? nil : [owned copy], failure);
+        }];
+    }];
+}
+- (void)addTrack:(NSString *)trackID toPlaylist:(NSString *)playlistID completion:(MCAPICompletion)completion {
+    if (![self requireID:trackID completion:completion] ||
+        ![self requireID:playlistID completion:completion] || ![self requireAccount:completion]) return;
+    [self sendPath:@"/api/playlist/manipulate/tracks"
+        parameters:@{@"op":@"add", @"pid":playlistID,
+                     @"trackIds":[NSString stringWithFormat:@"[\"%@\"]", trackID], @"imme":@"true"}
+        completion:^(id result, NSError *error) { MCComplete(completion, result, error); }];
+}
+- (void)subscribePlaylist:(NSString *)identifier completion:(MCAPICompletion)completion {
+    if (![self requireID:identifier completion:completion] || ![self requireAccount:completion]) return;
+    [self sendPath:@"/api/playlist/subscribe" parameters:@{@"id":identifier}
+        completion:^(id result, NSError *error) { MCComplete(completion, result, error); }];
+}
 - (void)likeTrack:(NSString *)identifier liked:(BOOL)liked completion:(MCAPICompletion)completion {
     if (![self requireID:identifier completion:completion] || ![self requireAccount:completion])
         return;

@@ -8,3 +8,4 @@
 @end
 @interface MCAccountController : UIViewController
 @end
+void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSString *localPlaylistID);

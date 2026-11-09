@@ -5,6 +5,7 @@
 #import "MCTheme.h"
 #import "MCFlatControls.h"
 #import "MCDialogs.h"
+#import "MCLegal.h"
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -360,7 +361,8 @@ static NSString *MCSourceText(id value) {
 }
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
     return section == 0 ? @"轻点下面的音源导入或更新。导入后回到音源页手动选择。"
-                        : @"列表来自 GitHub；离线时保留缓存。当前曲库需要支持网易云 "
+                        : @"仓库脚本来自第三方，请确认来源可信及内容授权；接入不代表软件对其安全性或版权的保证。"
+                          @"列表来自 GitHub；离线时保留缓存。当前曲库需要支持网易云 "
                           @"wy，具体源是否可用以实际导入和播放为准。";
 }
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)path {
@@ -463,16 +465,17 @@ static NSString *MCSourceText(id value) {
     [self.tableView reloadData];
 }
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 3;
+    return 4;
 }
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return section == 0 ? (self.importing ? 3 : 2) : (section == 1 ? 5 : self.entries.count);
+    return section == 0 ? (self.importing ? 3 : 2) : section == 1 ? 5 : section == 2 ? self.entries.count : 1;
 }
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    return section == 0 ? nil : (section == 1 ? @"音源选项" : @"播放地址来源");
+    return section == 0 ? nil : section == 1 ? @"音源选项" : section == 2 ? @"播放地址来源" : @"使用说明";
 }
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
-    return section == 0 ? @"导入兼容洛雪协议的脚本，或配置自己的 API。"
+    if (section == 3) return nil;
+    return section == 0 ? @"导入兼容洛雪协议的脚本，或配置自己的 API。第三方源不代表软件对其版权、安全性或可用性的保证，请仅使用可信且合法的来源。"
            : section == 1
                ? @"自动同步在回到前台时每天检查已订阅源。可选仓库提供的加速下载；目录由 GitHub "
                  @"获取，下载内容仍校验。仅允许 HTTPS 默认开启；关闭后允许自定义音源使用未加密的 "
@@ -482,6 +485,11 @@ static NSString *MCSourceText(id value) {
 }
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)path {
     UITableViewCell *cell = MCSourceCell(UITableViewCellStyleSubtitle);
+    if (path.section == 3) {
+        cell.textLabel.text = @"第三方音源免责声明";
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        return cell;
+    }
     if (path.section == 0) {
         cell.textLabel.text = path.row == 0   ? @"导入脚本"
                               : path.row == 1 ? @"添加 API"
@@ -551,6 +559,10 @@ static NSString *MCSourceText(id value) {
 }
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)path {
     [tableView deselectRowAtIndexPath:path animated:YES];
+    if (path.section == 3) {
+        MCMessage(self, @"第三方音源免责声明", MCSourceDisclaimerText);
+        return;
+    }
     if (path.section == 1) {
         if (path.row == 0)
             [self.navigationController pushViewController:[MCSourceRepositoryController new] animated:YES];

@@ -26,7 +26,7 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
     return CGRectContainsPoint(CGRectInset(self.bounds, 0, -6), point);
 }
 @end
-@interface MCNowPlayingController () <UITableViewDataSource, UITableViewDelegate>
+@interface MCNowPlayingController () <UITableViewDataSource, UITableViewDelegate, UIGestureRecognizerDelegate>
 @property (nonatomic, strong) UIView *content;
 @property (nonatomic, strong) UIImageView *cover;
 @property (nonatomic, strong) UILabel *navigationTitle;
@@ -45,6 +45,7 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
 @property (nonatomic, strong) MCPlaybackButton *shuffleButton;
 @property (nonatomic, strong) MCPlaybackButton *favoriteButton;
 @property (nonatomic, strong) MCPlaybackButton *details;
+@property (nonatomic, strong) UIButton *queueButton;
 @property (nonatomic, strong) UISegmentedControl *mode;
 @property (nonatomic, strong) UITableView *lyricsTable;
 @property (nonatomic, strong) UILabel *lyricsEmpty;
@@ -93,6 +94,12 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
     self.title = @"正在播放";
     self.content = [UIView new];
     [self.view addSubview:self.content];
+    for (NSNumber *direction in @[@(UISwipeGestureRecognizerDirectionLeft), @(UISwipeGestureRecognizerDirectionRight)]) {
+        UISwipeGestureRecognizer *swipe = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(swipeMode:)];
+        swipe.direction = direction.unsignedIntegerValue;
+        swipe.delegate = self;
+        [self.content addGestureRecognizer:swipe];
+    }
     self.mode = [[MCPlayerModeControl alloc] initWithItems:@[ @"封面", @"歌词" ]];
     self.mode.selectedSegmentIndex = 0;
     self.mode.accessibilityLabel = @"播放页面内容";
@@ -104,6 +111,7 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
     self.cover.layer.cornerRadius = 16;
     self.cover.isAccessibilityElement = YES;
     self.cover.accessibilityLabel = @"专辑封面";
+    self.cover.accessibilityHint = @"左滑切换到歌词，右滑切回封面";
     [self.content addSubview:self.cover];
     self.lyricsTable = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
     self.lyricsTable.dataSource = self;
@@ -161,19 +169,34 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
     self.favoriteButton = [self button:MCPlaybackIconFavorite label:@"本地收藏" action:@selector(favorite)];
     self.details = [[MCPlaybackButton alloc] initWithFrame:CGRectMake(0, 0, 44, 44)];
     self.details.icon = MCPlaybackIconDetails;
-    self.details.accessibilityLabel = @"歌曲详情与实际音质";
-    [self.details addTarget:self action:@selector(qualityTapped) forControlEvents:UIControlEventTouchUpInside];
-    UIBarButtonItem *detailItem = [[UIBarButtonItem alloc] initWithCustomView:self.details];
-    UIBarButtonItem *queue = [[UIBarButtonItem alloc] initWithTitle:@"队列" style:UIBarButtonItemStylePlain
-                                                          target:self action:@selector(queueTapped)];
-    self.navigationItem.rightBarButtonItems = @[detailItem, queue];
-    self.navigationTitle = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 112, 28)];
+    self.details.accessibilityLabel = @"歌曲操作";
+    [self.details addTarget:self action:@selector(trackActions) forControlEvents:UIControlEventTouchUpInside];
+    // One fixed-width item keeps both controls visible with long back titles on iOS 6.
+    UIView *navigationActions = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 88, 44)];
+    navigationActions.clipsToBounds = YES;
+    self.queueButton = MCTextButton();
+    self.queueButton.frame = CGRectMake(0, 0, 44, 44);
+    self.queueButton.titleLabel.font = [UIFont systemFontOfSize:14];
+    [self.queueButton setTitle:@"队列" forState:UIControlStateNormal];
+    [self.queueButton addTarget:self action:@selector(queueTapped) forControlEvents:UIControlEventTouchUpInside];
+    self.details.frame = CGRectMake(44, 0, 44, 44);
+    [navigationActions addSubview:self.queueButton];
+    [navigationActions addSubview:self.details];
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithCustomView:navigationActions];
+    self.navigationItem.rightBarButtonItem.width = 88;
+    self.navigationTitle = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 96, 28)];
     self.navigationTitle.backgroundColor = [UIColor clearColor];
     self.navigationTitle.opaque = NO;
     self.navigationTitle.font = [UIFont boldSystemFontOfSize:14];
     self.navigationTitle.textAlignment = NSTextAlignmentCenter;
     self.navigationTitle.lineBreakMode = NSLineBreakByTruncatingTail;
-    self.navigationItem.titleView = self.navigationTitle;
+    // UILabel sizeThatFits grows with a long lyric title. Bound its container too.
+    UIView *titleContainer = [[UIView alloc] initWithFrame:self.navigationTitle.frame];
+    titleContainer.clipsToBounds = YES;
+    self.navigationTitle.frame = titleContainer.bounds;
+    self.navigationTitle.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [titleContainer addSubview:self.navigationTitle];
+    self.navigationItem.titleView = titleContainer;
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(update)
                                                  name:MCPlayerDidChangeNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(progress)
@@ -192,7 +215,6 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
     self.previousTranslucent = self.navigationController.navigationBar.translucent;
     self.navigationController.navigationBar.translucent = NO;
     [self.tabBarController.view viewWithTag:8080].hidden = YES;
-    [self.tabBarController.view viewWithTag:8081].hidden = YES;
     [self theme];
     [self update];
     [self refreshFavorite];
@@ -203,7 +225,6 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
     [super viewWillDisappear:animated];
     self.navigationController.navigationBar.translucent = self.previousTranslucent;
     [self.tabBarController.view viewWithTag:8080].hidden = NO;
-    [self.tabBarController.view viewWithTag:8081].hidden = NO;
 }
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
@@ -298,7 +319,8 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
     self.status.accessibilityLabel = p.error ? [@"播放失败：" stringByAppendingString:reason] : self.status.text;
     self.status.accessibilityTraits = p.error ? UIAccessibilityTraitButton : UIAccessibilityTraitStaticText;
     self.status.accessibilityHint = p.error ? @"点按查看原因、重试或切换音源" : nil;
-    self.details.accessibilityHint = p.error ? @"查看播放错误并重试" : @"查看完整歌名、歌手和实际音质";
+    self.details.accessibilityHint = @"收藏、加入歌单、浏览歌手和查看歌曲信息";
+    self.details.enabled = track != nil;
     self.play.enabled = self.previousButton.enabled = self.nextButton.enabled = track != nil;
     self.favoriteButton.enabled = track != nil && !self.favoriteChanging;
     NSString *identifier = track[@"id"];
@@ -404,6 +426,21 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
 - (void)toggle { [[MCPlayer sharedPlayer] toggle]; }
 - (void)next { [[MCPlayer sharedPlayer] next]; }
 - (void)previous { [[MCPlayer sharedPlayer] previous]; }
+- (void)swipeMode:(UISwipeGestureRecognizer *)swipe {
+    self.mode.selectedSegmentIndex = swipe.direction == UISwipeGestureRecognizerDirectionLeft ? 1 : 0;
+    [self modeChanged];
+}
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldReceiveTouch:(UITouch *)touch {
+    (void)gesture;
+    for (UIView *view = touch.view; view && view != self.content; view = view.superview)
+        if ([view isKindOfClass:[UIControl class]]) return NO;
+    return YES;
+}
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture
+    shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)other {
+    return [gesture isKindOfClass:[UISwipeGestureRecognizer class]] && other == self.lyricsTable.panGestureRecognizer;
+}
+- (void)trackActions { MCShowTrackActions(self, [MCPlayer sharedPlayer].currentTrack, nil); }
 - (void)repeatTapped {
     MCPlayer *p = [MCPlayer sharedPlayer];
     p.repeatMode = (p.repeatMode + 1) % 3;

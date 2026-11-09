@@ -102,6 +102,114 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
     [controller.navigationController pushViewController:v animated:YES];
 }
 
+static BOOL MCRequireCloudAccount(UIViewController *controller) {
+    if ([MCAPI sharedAPI].loggedIn) return YES;
+    __weak UIViewController *weakController = controller;
+    MCChooseMessage(@"请先登录网易云", @"登录后可以加入网易云歌单或收藏推荐歌单。", @[@"扫码登录"], ^(NSInteger choice) {
+        (void)choice;
+        [weakController.navigationController pushViewController:[MCAccountController new] animated:YES];
+    });
+    return NO;
+}
+static void MCAddTrackToLocalPlaylist(UIViewController *controller, NSDictionary *track) {
+    __weak UIViewController *weakController = controller;
+    [[MCLibrary sharedLibrary] playlists:^(NSArray *lists) {
+        if (!weakController) return;
+        NSMutableArray *titles = [NSMutableArray arrayWithObject:@"新建歌单…"];
+        for (NSDictionary *d in lists) [titles addObject:MCS(d[@"title"])];
+        MCChoose(weakController, @"加入本地歌单", titles, ^(NSInteger i) {
+            if (i == 0)
+                MCInput(@"新建歌单", @"歌单完全离线保存", @"", ^(NSString *name) {
+                    if (!name.length) return;
+                    [[MCLibrary sharedLibrary] createPlaylist:name completion:^(NSString *identifier) {
+                        if (identifier) [[MCLibrary sharedLibrary] addTrack:track toPlaylist:identifier];
+                    }];
+                });
+            else [[MCLibrary sharedLibrary] addTrack:track toPlaylist:lists[i - 1][@"id"]];
+        });
+    }];
+}
+static void MCAddTrackToCloudPlaylist(UIViewController *controller, NSDictionary *track) {
+    if (!MCRequireCloudAccount(controller)) return;
+    __weak UIViewController *weakController = controller;
+    [[MCAPI sharedAPI] editablePlaylists:^(id result, NSError *error) {
+        if (!weakController) return;
+        NSArray *lists = result;
+        if (error || !lists.count) {
+            MCMessage(weakController, error ? @"读取歌单失败" : @"还没有可加入的歌单",
+                error.localizedDescription ?: @"请先在网易云创建一个自己的歌单，再回来加入歌曲。");
+            return;
+        }
+        NSMutableArray *titles = [NSMutableArray array];
+        for (NSDictionary *item in lists) [titles addObject:MCS(item[@"title"])];
+        MCChoose(weakController, @"加入网易云歌单", titles, ^(NSInteger choice) {
+            NSDictionary *playlist = lists[choice];
+            [[MCAPI sharedAPI] addTrack:MCS(track[@"id"]) toPlaylist:playlist[@"id"]
+                completion:^(id value, NSError *failure) {
+                    (void)value;
+                    MCMessage(weakController, failure ? @"加入失败" : @"已加入歌单",
+                        failure.localizedDescription ?: [NSString stringWithFormat:@"已加入「%@」。", MCS(playlist[@"title"])]);
+                }];
+        });
+    }];
+}
+static void MCSubscribeCloudPlaylist(UIViewController *controller, NSDictionary *playlist) {
+    if (!MCRequireCloudAccount(controller)) return;
+    __weak UIViewController *weakController = controller;
+    [[MCAPI sharedAPI] subscribePlaylist:MCS(playlist[@"id"]) completion:^(id result, NSError *error) {
+        (void)result;
+        MCMessage(weakController, error ? @"收藏失败" : @"已收藏到网易云",
+            error.localizedDescription ?: [NSString stringWithFormat:@"「%@」已收藏到网易云账号。", MCS(playlist[@"title"])]);
+    }];
+}
+void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSString *localPlaylistID) {
+    if (!track) return;
+    __weak UIViewController *weakController = controller;
+    [[MCLibrary sharedLibrary] favoriteTracks:^(NSArray *favorites) {
+        if (!weakController) return;
+        BOOL fav = NO;
+        for (NSDictionary *item in favorites)
+            if ([item[@"id"] isEqual:track[@"id"]]) { fav = YES; break; }
+        BOOL isLocal = [MCS(track[@"id"]) hasPrefix:@"local:"];
+        NSMutableArray *choices = [NSMutableArray arrayWithObjects:@"加入播放队列",
+            fav ? @"取消本地收藏" : @"本地收藏", @"加入本地歌单", @"歌曲信息", nil];
+        if (!isLocal) [choices addObjectsFromArray:@[@"加入网易云歌单", @"在网易云设为喜欢", @"取消网易云喜欢"]];
+        if (MCS(track[@"artistID"]).length) [choices addObject:@"浏览歌手"];
+        if (MCS(track[@"albumID"]).length) [choices addObject:@"浏览专辑"];
+        if (localPlaylistID.length) [choices addObject:@"从此歌单移除"];
+        MCChoose(weakController, MCS(track[@"title"]), choices, ^(NSInteger i) {
+            UIViewController *current = weakController;
+            if (!current) return;
+            NSString *action = choices[i];
+            if (i == 0) [[MCPlayer sharedPlayer] enqueueTrack:track];
+            else if (i == 1) [[MCLibrary sharedLibrary] setFavorite:!fav track:track];
+            else if (i == 2) MCAddTrackToLocalPlaylist(current, track);
+            else if (i == 3) {
+                NSMutableString *information = [NSMutableString stringWithFormat:@"%@\n%@ · %@\n时长 %@\n%@\nID %@",
+                    MCS(track[@"title"]), MCS(track[@"artist"]), MCS(track[@"album"]),
+                    MCTime([track[@"duration"] doubleValue]), MCS(track[@"format"]), MCS(track[@"id"])];
+                MCPlayer *player = [MCPlayer sharedPlayer];
+                if ([player.currentTrack[@"id"] isEqual:track[@"id"]] && player.qualityLabel.length)
+                    [information appendFormat:@"\n实际音质：%@", player.qualityLabel];
+                MCMessage(current, @"歌曲信息", information);
+            } else if ([action isEqual:@"加入网易云歌单"]) MCAddTrackToCloudPlaylist(current, track);
+            else if ([action isEqual:@"浏览歌手"])
+                MCOpenCatalog(current, @{@"id":track[@"artistID"], @"title":MCS(track[@"artist"])}, @"artists");
+            else if ([action isEqual:@"浏览专辑"])
+                MCOpenCatalog(current, @{@"id":track[@"albumID"], @"title":MCS(track[@"album"])}, @"albums");
+            else if ([action isEqual:@"从此歌单移除"])
+                [[MCLibrary sharedLibrary] removeTrack:track[@"id"] fromPlaylist:localPlaylistID];
+            else if (MCRequireCloudAccount(current))
+                [[MCAPI sharedAPI] likeTrack:track[@"id"] liked:[action isEqual:@"在网易云设为喜欢"]
+                    completion:^(id result, NSError *error) {
+                        (void)result;
+                        MCMessage(weakController, error ? @"操作失败" : @"已更新",
+                            error.localizedDescription ?: @"网易云喜欢的音乐已更新。");
+                    }];
+        });
+    }];
+}
+
 @implementation MCListController
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -431,7 +539,8 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
         track ? [NSString stringWithFormat:@"%@ · %@  %@", MCS(d[@"artist"]), MCS(d[@"album"]),
                                            MCTime([d[@"duration"] doubleValue])]
               : MCS(d[@"subtitle"]);
-    BOOL playlistMenu = [self.kind isEqual:@"libraryPlaylists"];
+    BOOL playlistMenu = [self.kind isEqual:@"libraryPlaylists"] || [[self effectiveKind] isEqual:@"playlists"];
+    c.accessoryView = nil;
     c.accessoryType = track || playlistMenu ? UITableViewCellAccessoryNone : UITableViewCellAccessoryDisclosureIndicator;
     if (track || playlistMenu) {
         MCPlaybackButton *button = [[MCPlaybackButton alloc] initWithFrame:CGRectMake(0, 0, 44, 44)];
@@ -479,84 +588,19 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
     NSIndexPath *path = [self.tableView indexPathForRowAtPoint:point];
     if (path && [self.kind isEqual:@"libraryPlaylists"]) [self editPlaylistRow:path.row];
     else if (path && self.flatEditing && [self.kind isEqual:@"queue"]) [self editQueueRow:path.row];
-    else if (path) [self tableView:self.tableView accessoryButtonTappedForRowWithIndexPath:path];
+    else if (path && [[self effectiveKind] isEqual:@"playlists"]) {
+        NSDictionary *playlist = self.items[path.row];
+        __weak MCListController *weakSelf = self;
+        MCChoose(self, MCS(playlist[@"title"]), @[@"打开歌单", @"收藏到网易云"], ^(NSInteger choice) {
+            if (!weakSelf) return;
+            if (choice == 0) MCOpenCatalog(weakSelf, playlist, @"playlists");
+            else MCSubscribeCloudPlaylist(weakSelf, playlist);
+        });
+    } else if (path) [self tableView:self.tableView accessoryButtonTappedForRowWithIndexPath:path];
 }
 - (void)tableView:(UITableView *)t accessoryButtonTappedForRowWithIndexPath:(NSIndexPath *)p {
     (void)t;
-    NSDictionary *track = self.items[p.row];
-    __weak MCListController *w = self;
-    [[MCLibrary sharedLibrary] favoriteTracks:^(NSArray *favorites) {
-        BOOL fav = NO;
-        for (NSDictionary *f in favorites)
-            if ([f[@"id"] isEqual:track[@"id"]]) {
-                fav = YES;
-                break;
-            }
-        BOOL isLocal = [MCS(track[@"id"]) hasPrefix:@"local:"];
-        NSMutableArray *choices =
-            [NSMutableArray arrayWithObjects:@"加入播放队列", fav ? @"取消本地收藏" : @"本地收藏",
-                                             @"加入本地歌单", @"歌曲信息", nil];
-        if (!isLocal)
-            [choices addObjectsFromArray:@[ @"在网易云设为喜欢", @"取消网易云喜欢" ]];
-        if (MCS(track[@"artistID"]).length)
-            [choices addObject:@"浏览歌手"];
-        if (MCS(track[@"albumID"]).length)
-            [choices addObject:@"浏览专辑"];
-        if (w.playlistID.length)
-            [choices addObject:@"从此歌单移除"];
-        MCChoose(w, MCS(track[@"title"]), choices, ^(NSInteger i) {
-            NSString *action = choices[i];
-            if (i == 0)
-                [[MCPlayer sharedPlayer] enqueueTrack:track];
-            else if (i == 1)
-                [[MCLibrary sharedLibrary] setFavorite:!fav track:track];
-            else if (i == 2)
-                [w addTrackToPlaylist:track];
-            else if (i == 3)
-                MCMessage(w, @"歌曲信息",
-                          [NSString stringWithFormat:@"%@\n%@ · %@\n时长 %@\n%@\nID %@", MCS(track[@"title"]),
-                                                     MCS(track[@"artist"]), MCS(track[@"album"]),
-                                                     MCTime([track[@"duration"] doubleValue]),
-                                                     MCS(track[@"format"]), MCS(track[@"id"])]);
-            else if ([action isEqual:@"浏览歌手"])
-                MCOpenCatalog(w, @{@"id" : track[@"artistID"], @"title" : MCS(track[@"artist"])}, @"artists");
-            else if ([action isEqual:@"浏览专辑"])
-                MCOpenCatalog(w, @{@"id" : track[@"albumID"], @"title" : MCS(track[@"album"])}, @"albums");
-            else if ([action isEqual:@"从此歌单移除"])
-                [[MCLibrary sharedLibrary] removeTrack:track[@"id"] fromPlaylist:w.playlistID];
-            else
-                [[MCAPI sharedAPI] likeTrack:track[@"id"]
-                                       liked:[action isEqual:@"在网易云设为喜欢"]
-                                  completion:^(id r, NSError *e) {
-                                      (void)r;
-                                      MCMessage(w, e ? @"操作失败" : @"已更新",
-                                                e.localizedDescription ?: @"网易云喜欢的音乐已更新。");
-                                  }];
-        });
-    }];
-}
-- (void)addTrackToPlaylist:(NSDictionary *)track {
-    __weak MCListController *w = self;
-    [[MCLibrary sharedLibrary] playlists:^(NSArray *lists) {
-        NSMutableArray *titles = [NSMutableArray arrayWithObject:@"新建歌单…"];
-        for (NSDictionary *d in lists)
-            [titles addObject:MCS(d[@"title"])];
-        MCChoose(w, @"加入歌单", titles, ^(NSInteger i) {
-            if (i == 0)
-                MCInput(@"新建歌单", @"歌单完全离线保存", @"", ^(NSString *name) {
-                    if (!name.length)
-                        return;
-                    [[MCLibrary sharedLibrary] createPlaylist:name
-                                                   completion:^(NSString *identifier) {
-                                                       if (identifier)
-                                                           [[MCLibrary sharedLibrary] addTrack:track
-                                                                                    toPlaylist:identifier];
-                                                   }];
-                });
-            else
-                [[MCLibrary sharedLibrary] addTrack:track toPlaylist:lists[i - 1][@"id"]];
-        });
-    }];
+    MCShowTrackActions(self, self.items[p.row], self.playlistID);
 }
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView {
     CGFloat pull = -scrollView.contentOffset.y - scrollView.contentInset.top;
@@ -783,27 +827,42 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
 @end
 
 @interface MCRootController ()
+@property (nonatomic, strong) UIView *miniTray;
 @property (nonatomic, strong) UIButton *mini;
 @property (nonatomic, strong) MCPlaybackButton *toggleButton;
+@property (nonatomic, strong) MCPlaybackButton *miniPrevious;
+@property (nonatomic, strong) MCPlaybackButton *miniNext;
 @property (nonatomic, strong) UIImageView *miniCover;
 @property (nonatomic, strong) UILabel *miniTitle;
 @property (nonatomic, strong) UILabel *miniArtist;
 @property (nonatomic, strong) UIView *miniBoundary;
+@property (nonatomic, strong) UIView *miniProgress;
 @property (nonatomic, copy) NSString *miniArtwork;
 @property (nonatomic) BOOL miniArtworkReady;
 @property (nonatomic) BOOL lastFollowArtwork;
 @property (nonatomic, copy) NSString *lastLibraryError;
 @end
 @interface MCNavigationController : UINavigationController <UINavigationControllerDelegate>
+@property (nonatomic, strong) UIViewController *shownController;
+@property (nonatomic, strong) UIView *outgoingLeftView;
 @end
 @implementation MCNavigationController
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.delegate = self;
+    self.shownController = self.topViewController;
 }
 - (void)navigationController:(UINavigationController *)navigationController
     willShowViewController:(UIViewController *)viewController animated:(BOOL)animated {
-    (void)animated;
+    // Legacy UIKit cross-fades custom back captions at the same coordinates.
+    // Hide the outgoing caption for the transition; restore its item afterwards.
+    self.outgoingLeftView.hidden = NO;
+    self.outgoingLeftView = nil;
+    if (animated && self.shownController != viewController) {
+        self.outgoingLeftView = self.shownController.navigationItem.leftBarButtonItem.customView;
+        self.outgoingLeftView.hidden = YES;
+        navigationController.navigationBar.userInteractionEnabled = NO;
+    }
     NSUInteger index = [navigationController.viewControllers indexOfObjectIdenticalTo:viewController];
     if (index != NSNotFound && index > 0 &&
         (!viewController.navigationItem.leftBarButtonItem ||
@@ -815,6 +874,14 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
         viewController.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithCustomView:back];
     }
     [[MCTheme sharedTheme] applyToNavigationBar:navigationController.navigationBar];
+}
+- (void)navigationController:(UINavigationController *)navigationController
+    didShowViewController:(UIViewController *)viewController animated:(BOOL)animated {
+    (void)animated;
+    self.outgoingLeftView.hidden = NO;
+    self.outgoingLeftView = nil;
+    self.shownController = viewController;
+    navigationController.navigationBar.userInteractionEnabled = YES;
 }
 - (void)flatBack { [self popViewControllerAnimated:YES]; }
 - (UIStatusBarStyle)preferredStatusBarStyle {
@@ -855,13 +922,22 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
                                              selector:@selector(libraryError:)
                                                  name:MCLibraryDidChangeNotification
                                                object:nil];
+    self.miniTray = [UIView new];
+    self.miniTray.tag = 8080;
+    self.miniTray.clipsToBounds = YES;
+    [self.view addSubview:self.miniTray];
     self.mini = MCTextButton();
-    self.mini.tag = 8080;
+    [self.miniTray addSubview:self.mini];
     [self.mini addTarget:self action:@selector(now) forControlEvents:UIControlEventTouchUpInside];
     [self.mini addTarget:self action:@selector(miniPressed) forControlEvents:UIControlEventTouchDown];
     [self.mini addTarget:self action:@selector(miniReleased)
           forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
-    self.mini.accessibilityHint = @"打开正在播放页面";
+    self.mini.accessibilityHint = @"点按打开播放页面，左滑下一首，右滑上一首";
+    for (NSNumber *direction in @[@(UISwipeGestureRecognizerDirectionLeft), @(UISwipeGestureRecognizerDirectionRight)]) {
+        UISwipeGestureRecognizer *swipe = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(miniSwipe:)];
+        swipe.direction = direction.unsignedIntegerValue;
+        [self.miniTray addGestureRecognizer:swipe];
+    }
     self.miniCover = [UIImageView new];
     self.miniCover.contentMode = UIViewContentModeScaleAspectFill;
     self.miniCover.layer.cornerRadius = 8;
@@ -882,12 +958,23 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
     [self.mini addSubview:self.miniArtist];
     self.miniBoundary = [UIView new];
     self.miniBoundary.userInteractionEnabled = NO;
-    [self.mini addSubview:self.miniBoundary];
+    self.miniProgress = [UIView new];
+    self.miniProgress.userInteractionEnabled = NO;
+    self.miniPrevious = [[MCPlaybackButton alloc] initWithFrame:CGRectZero];
+    self.miniPrevious.icon = MCPlaybackIconPrevious;
+    self.miniPrevious.accessibilityLabel = @"上一曲";
+    [self.miniPrevious addTarget:self action:@selector(miniPreviousTapped) forControlEvents:UIControlEventTouchUpInside];
+    self.miniNext = [[MCPlaybackButton alloc] initWithFrame:CGRectZero];
+    self.miniNext.icon = MCPlaybackIconNext;
+    self.miniNext.accessibilityLabel = @"下一曲";
+    [self.miniNext addTarget:self action:@selector(miniNextTapped) forControlEvents:UIControlEventTouchUpInside];
     self.toggleButton = [[MCPlaybackButton alloc] initWithFrame:CGRectZero];
-    self.toggleButton.tag = 8081;
     [self.toggleButton addTarget:self action:@selector(toggle) forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:self.mini];
-    [self.view addSubview:self.toggleButton];
+    [self.miniTray addSubview:self.miniPrevious];
+    [self.miniTray addSubview:self.toggleButton];
+    [self.miniTray addSubview:self.miniNext];
+    [self.miniTray addSubview:self.miniBoundary];
+    [self.miniTray addSubview:self.miniProgress];
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(update)
                                                  name:MCPlayerDidChangeNotification
@@ -896,8 +983,11 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
                                              selector:@selector(update)
                                                  name:MCThemeDidChangeNotification
                                                object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updateMiniProgress)
+        name:MCPlayerProgressNotification object:nil];
     [self update];
 }
+- (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; }
 - (UIImage *)tabIcon:(NSUInteger)i {
     UIGraphicsBeginImageContextWithOptions(CGSizeMake(25, 25), NO, 0);
     UIBezierPath *p = [UIBezierPath bezierPath];
@@ -926,25 +1016,31 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
     CGFloat w = self.view.bounds.size.width, y = self.tabBar.frame.origin.y - 52;
-    self.mini.frame = CGRectMake(0, y, w - 52, 52);
-    self.miniCover.frame = CGRectMake(12, 8, 36, 36);
-    self.miniTitle.frame = CGRectMake(58, 7, MAX(0, w - 114), 20);
-    self.miniArtist.frame = CGRectMake(58, 28, MAX(0, w - 114), 16);
-    self.toggleButton.frame = CGRectMake(w - 52, y, 52, 52);
-    self.miniBoundary.frame = CGRectMake(0, 0, w - 52, 1 / [UIScreen mainScreen].scale);
-    [self.view bringSubviewToFront:self.mini];
-    [self.view bringSubviewToFront:self.toggleButton];
+    self.miniTray.frame = CGRectMake(0, y, w, 52);
+    self.mini.frame = CGRectMake(0, 2, w - 132, 50);
+    self.miniCover.frame = CGRectMake(12, 8, 32, 32);
+    self.miniTitle.frame = CGRectMake(54, 6, MAX(0, w - 194), 20);
+    self.miniArtist.frame = CGRectMake(54, 27, MAX(0, w - 194), 16);
+    self.miniPrevious.frame = CGRectMake(w - 132, 4, 44, 44);
+    self.toggleButton.frame = CGRectMake(w - 88, 4, 44, 44);
+    self.miniNext.frame = CGRectMake(w - 44, 4, 44, 44);
+    self.miniBoundary.frame = CGRectMake(0, 0, w, 2);
+    [self updateMiniProgress];
+    [self.view bringSubviewToFront:self.miniTray];
 }
 - (void)update {
     MCPlayer *p = [MCPlayer sharedPlayer];
     MCTheme *t = [MCTheme sharedTheme];
+    self.miniTray.backgroundColor = t.surface;
     self.mini.backgroundColor = t.surface;
     self.toggleButton.backgroundColor = t.surface;
     self.miniTitle.textColor = t.text;
     self.miniArtist.textColor = t.muted;
     self.miniCover.backgroundColor = t.background;
     self.miniBoundary.backgroundColor = [t.muted colorWithAlphaComponent:.18];
+    self.miniProgress.backgroundColor = t.primary;
     self.toggleButton.ink = t.primary;
+    self.miniPrevious.ink = self.miniNext.ink = t.primary;
     [t applyToTabBar:self.tabBar];
     for (UINavigationController *nav in self.viewControllers) {
         [t applyToNavigationBar:nav.navigationBar];
@@ -972,6 +1068,14 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
     self.toggleButton.icon = p.playing ? MCPlaybackIconPause : MCPlaybackIconPlay;
     self.toggleButton.accessibilityLabel = p.playing ? @"暂停" : @"播放";
     self.toggleButton.enabled = p.currentTrack != nil;
+    self.miniPrevious.enabled = self.miniNext.enabled = p.currentTrack != nil;
+    [self updateMiniProgress];
+}
+- (void)updateMiniProgress {
+    MCPlayer *player = [MCPlayer sharedPlayer];
+    double progress = player.currentTrack && isfinite(player.duration) && player.duration > 0 && isfinite(player.position)
+        ? MAX(0, MIN(1, player.position / player.duration)) : 0;
+    self.miniProgress.frame = CGRectMake(0, 0, self.miniTray.bounds.size.width * progress, 2);
 }
 - (void)libraryError:(NSNotification *)note {
     NSArray *errors = note.userInfo[@"errors"];
@@ -988,6 +1092,13 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
 }
 - (void)miniPressed { self.miniCover.alpha = self.miniTitle.alpha = self.miniArtist.alpha = .65; }
 - (void)miniReleased { self.miniCover.alpha = self.miniTitle.alpha = self.miniArtist.alpha = 1; }
+- (void)miniPreviousTapped { [[MCPlayer sharedPlayer] previous]; }
+- (void)miniNextTapped { [[MCPlayer sharedPlayer] next]; }
+- (void)miniSwipe:(UISwipeGestureRecognizer *)swipe {
+    [self miniReleased];
+    if (swipe.direction == UISwipeGestureRecognizerDirectionLeft) [self miniNextTapped];
+    else [self miniPreviousTapped];
+}
 - (void)toggle {
     [[MCPlayer sharedPlayer] toggle];
 }

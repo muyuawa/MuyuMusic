@@ -22,6 +22,8 @@ Methods:
 `-userPlaylists:(MCAPICompletion)completion` → catalog array.
 `-likedTracks:(MCAPICompletion)completion` → dictionary `tracks`, `totalCount`, `unavailableTrackIDs`, matching playlist detail results.
 `-likeTrack:(NSString *)identifier liked:(BOOL)liked completion:(MCAPICompletion)completion`.
+`-editablePlaylists:(MCAPICompletion)completion` → all current-account-created playlists, filtered by normalized creator ID after pagination; subscribed playlists are not offered as add targets.
+`-addTrack:(NSString *)trackID toPlaylist:(NSString *)playlistID completion:(MCAPICompletion)completion`; `-subscribePlaylist:(NSString *)identifier completion:(MCAPICompletion)completion`. Both require login and valid NetEase IDs, preserve service/network failures, and complete on main.
 `-songURL:(NSString *)identifier quality:(NSString *)quality completion:(MCAPICompletion)completion` → dictionary `url`, `format`, `bitrate`, `bitDepth`, `sampleRate`, `expires` (optional Unix time), `size` (optional); denied/trial-only rights → NSError, never silently substitute preview.
 `-lyrics:(NSString *)identifier completion:(MCAPICompletion)completion` → NSString LRC.
 `-createLoginKey:(MCAPICompletion)completion` → NSDictionary `key`, `url`.

@@ -239,10 +239,11 @@
 @end
 @implementation MCFlatBackButton
 - (id)initWithTitle:(NSString *)title {
-    CGFloat width = MIN(90, ceil([title sizeWithFont:[UIFont systemFontOfSize:15]].width) + 22);
+    CGFloat width = MIN(74, ceil([title sizeWithFont:[UIFont systemFontOfSize:15]].width) + 22);
     if ((self = [super initWithFrame:CGRectMake(0, 0, MAX(44, width), 44)])) {
         self.backgroundColor = [UIColor clearColor];
         self.opaque = NO;
+        self.clipsToBounds = YES;
         self.caption = [[UILabel alloc] initWithFrame:CGRectMake(20, 0, self.bounds.size.width - 20, 44)];
         self.caption.backgroundColor = [UIColor clearColor];
         self.caption.opaque = NO;

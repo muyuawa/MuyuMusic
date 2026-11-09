@@ -142,7 +142,10 @@ static NSString *MCHTTPSArtwork(id value) {
         subtitle = MCString(MCDict(item[@"artist"])[@"name"]);
     if (![subtitle length])
         subtitle = MCString(item[@"copywriter"]);
-    return @{@"id":identifier,@"title":MCString(item[@"name"]),@"artwork":MCHTTPSArtwork(item[@"picUrl"] ?: item[@"coverImgUrl"] ?: item[@"img1v1Url"]),@"subtitle":subtitle};
+    NSMutableDictionary *result = [@{@"id":identifier,@"title":MCString(item[@"name"]),@"artwork":MCHTTPSArtwork(item[@"picUrl"] ?: item[@"coverImgUrl"] ?: item[@"img1v1Url"]),@"subtitle":subtitle} mutableCopy];
+    NSString *creatorID = [self identifier:MCDict(item[@"creator"])[@"userId"]];
+    if (creatorID) result[@"creatorID"] = creatorID;
+    return result;
 }
 + (NSDictionary *)playableURL:(NSDictionary *)entry error:(NSError **)error {
     entry = MCDict(entry);
