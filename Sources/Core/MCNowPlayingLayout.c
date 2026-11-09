@@ -38,3 +38,15 @@ double MCLyricCenterOffset(unsigned row, double height, double rowHeight) {
 bool MCLyricCanFollow(double now, double resumeAfter, bool dragging, bool decelerating) {
     return !dragging && !decelerating && now >= resumeAfter;
 }
+double MCMiniDragOffset(double translation, double width, bool available) {
+    if (!isfinite(translation) || !isfinite(width) || width <= 0) return 0;
+    double limit = available ? width : width * .15;
+    return fmax(-limit, fmin(limit, available ? translation : translation * .25));
+}
+int MCMiniDragDestination(double translation, double velocity, double width, bool previous, bool next) {
+    if (!isfinite(translation) || !isfinite(velocity) || !isfinite(width) || width <= 0) return 0;
+    bool far = fabs(translation) >= width * .28;
+    bool flick = fabs(translation) >= 8 && fabs(velocity) >= 420 && translation * velocity > 0;
+    if (!far && !flick) return 0;
+    return translation < 0 ? (next ? -1 : 0) : (previous ? 1 : 0);
+}

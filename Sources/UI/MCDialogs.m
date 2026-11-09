@@ -74,7 +74,7 @@ typedef NS_ENUM(NSInteger, MCDialogKind) {
 @property (nonatomic, strong) NSMutableArray *pending;
 @property (nonatomic, strong) MCDialogRequest *active;
 @property (nonatomic, strong) UIWindow *window;
-@property (nonatomic, strong) UIWindow *previousWindow;
+@property (nonatomic, strong) MCDialogController *controller;
 @property (nonatomic) BOOL inactive;
 @property (nonatomic) BOOL completing;
 + (instancetype)sharedCoordinator;
@@ -185,7 +185,6 @@ static CGFloat MCDialogTextHeight(NSString *text, UIFont *font, CGFloat width) {
 }
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
-    if (MCMotionEnabled()) self.card.transform = CGAffineTransformMakeScale(.97, .97);
     MCAnimate(.18, UIViewAnimationOptionCurveEaseOut, ^{
         self.card.alpha = 1;
         self.card.transform = CGAffineTransformIdentity;
@@ -285,6 +284,9 @@ static CGFloat MCDialogTextHeight(NSString *text, UIFont *font, CGFloat width) {
     return NO;
 }
 - (void)invalidate {
+    MCFinishAnimations(self.view);
+    self.card.alpha = 1;
+    self.card.transform = CGAffineTransformIdentity;
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     self.field.delegate = nil;
     self.field.text = @"";
@@ -318,36 +320,35 @@ static CGFloat MCDialogTextHeight(NSString *text, UIFont *font, CGFloat width) {
 }
 - (void)showNext {
     if (self.active || self.completing || self.inactive || !self.pending.count) return;
+    UIWindow *host = [UIApplication sharedApplication].keyWindow;
+    if (!host.rootViewController || host.windowLevel != UIWindowLevelNormal) {
+        host = nil;
+        for (UIWindow *candidate in [UIApplication sharedApplication].windows)
+            if (!candidate.hidden && candidate.rootViewController && candidate.windowLevel == UIWindowLevelNormal) {
+                host = candidate;
+                break;
+            }
+    }
+    if (!host) return;
     self.active = self.pending[0];
     [self.pending removeObjectAtIndex:0];
-    self.previousWindow = [UIApplication sharedApplication].keyWindow;
-    [self.previousWindow endEditing:YES];
+    [host endEditing:YES];
     MCDialogController *controller = [MCDialogController new];
     controller.owner = self;
     controller.request = self.active;
-    self.window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
-    self.window.opaque = NO;
-    self.window.backgroundColor = [UIColor clearColor];
-    // iOS 6 hosts its keyboard in a separate window above normal app windows.
-    self.window.windowLevel = UIWindowLevelNormal + .5;
-    self.window.rootViewController = controller;
-    [self.window makeKeyAndVisible];
-}
-- (void)restorePreviousWindow {
-    UIWindow *restore = self.previousWindow;
-    if (!restore || restore.hidden) {
-        for (UIWindow *candidate in [UIApplication sharedApplication].windows) {
-            if (candidate != self.window && !candidate.hidden && candidate.windowLevel == UIWindowLevelNormal) {
-                restore = candidate;
-                break;
-            }
-        }
-    }
-    [restore makeKeyWindow];
-    self.previousWindow = nil;
+    self.window = host;
+    self.controller = controller;
+    // Keep one composited app window; legacy GPUs can retain a translucent
+    // secondary window's edges after it is destroyed during an animation.
+    controller.view.frame = host.bounds;
+    controller.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [controller beginAppearanceTransition:YES animated:NO];
+    [host addSubview:controller.view];
+    [controller.view layoutIfNeeded];
+    [controller endAppearanceTransition];
 }
 - (void)completeController:(MCDialogController *)controller selection:(NSInteger)selection {
-    if (!self.active || controller != self.window.rootViewController || self.completing) return;
+    if (!self.active || controller != self.controller || self.completing) return;
     BOOL accepted = selection >= 0 && !self.inactive;
     MCDialogRequest *request = self.active;
     NSString *text = accepted && request.kind == MCDialogInput ? [controller.field.text copy] ?: @"" : nil;
@@ -355,17 +356,20 @@ static CGFloat MCDialogTextHeight(NSString *text, UIFont *font, CGFloat width) {
     void (^action)(void) = accepted ? request.action : nil;
     void (^choice)(NSInteger) = accepted && selection < (NSInteger)request.choices.count ? request.choice : nil;
     self.completing = YES;
+    [controller beginAppearanceTransition:NO animated:NO];
     [controller invalidate];
-    self.window.hidden = YES;
-    [self restorePreviousWindow];
-    self.window.rootViewController = nil;
+    [controller.view removeFromSuperview];
+    [controller endAppearanceTransition];
+    [self.window setNeedsDisplay];
+    [self.window.rootViewController.view setNeedsDisplay];
+    self.controller = nil;
     self.window = nil;
     self.active = nil;
     request.value = nil;
     request.input = nil;
     request.action = nil;
     request.choice = nil;
-    // Tear down the entire window before callbacks: a completion may open another dialog.
+    // Remove the overlay before callbacks: a completion may open another dialog.
     if (input) input(text);
     if (action) action();
     if (choice) choice(selection);
@@ -383,18 +387,19 @@ static CGFloat MCDialogTextHeight(NSString *text, UIFont *font, CGFloat width) {
         }
     }
     if (self.active && self.active.kind == MCDialogInput) {
-        [self completeController:(MCDialogController *)self.window.rootViewController selection:-1];
+        [self completeController:self.controller selection:-1];
     } else if (self.window) {
-        self.window.hidden = YES;
-        [self restorePreviousWindow];
+        MCFinishAnimations(self.controller.view);
+        self.controller.view.hidden = YES;
     }
 }
 - (void)didBecomeActive:(NSNotification *)notification {
     (void)notification;
     self.inactive = NO;
     if (self.window) {
-        self.previousWindow = [UIApplication sharedApplication].keyWindow;
-        [self.window makeKeyAndVisible];
+        self.controller.view.hidden = NO;
+        self.controller.card.alpha = 1;
+        self.controller.card.transform = CGAffineTransformIdentity;
     } else [self showNext];
 }
 @end

@@ -25,6 +25,17 @@ static void queue_tests(void) {
     assert(mc_playback_shuffle_next(3, 0, visited, 0, 0) == 2);
     assert(mc_playback_shuffle_next(3, 2, visited, 0, 0) == SIZE_MAX);
     assert(mc_playback_shuffle_next(3, 2, visited, 1, 0) == 0);
+    unsigned char original[3] = {1, 0, 0}, planned[3] = {0};
+    assert(mc_playback_shuffle_preview(3, 0, original, 0, 1, planned) == 2);
+    assert(original[0] == 1 && original[1] == 0 && original[2] == 0);
+    assert(planned[0] == 1 && planned[1] == 0 && planned[2] == 1);
+    memcpy(original, planned, sizeof original); // Commit the exact preview, without choosing again.
+    assert(mc_playback_shuffle_next(3, 2, original, 0, 0) == 1);
+    assert(mc_playback_shuffle_preview(3, 1, original, 1, 0, planned) == 0);
+    assert(original[0] == 1 && original[1] == 1 && original[2] == 1); // Cancel preserves cycle.
+    assert(planned[0] == 1 && planned[1] == 1 && planned[2] == 0);
+    assert(mc_playback_shuffle_preview(3, 1, original, 0, 0, original) == SIZE_MAX);
+    assert(mc_playback_shuffle_preview(0, 0, original, 0, 0, planned) == SIZE_MAX);
     assert(mc_playback_remove_index(3, 2, 0) == 1);
     assert(mc_playback_remove_index(3, 1, 1) == 1);
     assert(mc_playback_remove_index(3, 2, 2) == 1);

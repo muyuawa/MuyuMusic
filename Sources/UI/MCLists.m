@@ -8,6 +8,7 @@
 #import "MCPlayer.h"
 #import "MCPlaybackButton.h"
 #import "MCMotion.h"
+#import "MCNowPlayingLayout.h"
 #import <QuartzCore/QuartzCore.h>
 #import <objc/runtime.h>
 #include <math.h>
@@ -827,8 +828,67 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
 }
 @end
 
-@interface MCRootController ()
+@interface MCMiniPreview : UIView
+@property (nonatomic, strong) UIImageView *cover;
+@property (nonatomic, strong) UILabel *nameLabel;
+@property (nonatomic, strong) UILabel *artistLabel;
+- (void)showTrack:(NSDictionary *)track;
+- (void)applyTheme;
+@end
+@implementation MCMiniPreview
+- (id)initWithFrame:(CGRect)frame {
+    if ((self = [super initWithFrame:frame])) {
+        self.userInteractionEnabled = NO;
+        self.cover = [UIImageView new];
+        self.cover.contentMode = UIViewContentModeScaleAspectFill;
+        self.cover.layer.cornerRadius = 8;
+        self.cover.clipsToBounds = YES;
+        self.cover.opaque = NO;
+        self.nameLabel = [UILabel new];
+        self.artistLabel = [UILabel new];
+        self.nameLabel.font = [UIFont systemFontOfSize:14];
+        self.artistLabel.font = [UIFont systemFontOfSize:12];
+        for (UILabel *label in @[self.nameLabel, self.artistLabel]) {
+            label.backgroundColor = [UIColor clearColor];
+            label.opaque = NO;
+            label.lineBreakMode = NSLineBreakByTruncatingTail;
+            [self addSubview:label];
+        }
+        [self addSubview:self.cover];
+        [self applyTheme];
+    }
+    return self;
+}
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    self.cover.frame = CGRectMake(12, 8, 32, 32);
+    self.nameLabel.frame = CGRectMake(54, 6, MAX(0, self.bounds.size.width - 62), 20);
+    self.artistLabel.frame = CGRectMake(54, 27, MAX(0, self.bounds.size.width - 62), 16);
+}
+- (void)applyTheme {
+    MCTheme *theme = [MCTheme sharedTheme];
+    self.backgroundColor = theme.surface;
+    self.cover.backgroundColor = theme.background;
+    self.nameLabel.textColor = theme.text;
+    self.artistLabel.textColor = theme.muted;
+}
+- (void)showTrack:(NSDictionary *)track {
+    self.nameLabel.text = MCS(track[@"title"]);
+    self.artistLabel.text = MCS(track[@"artist"]);
+    [[MCArtwork sharedCache] load:MCS(track[@"artwork"]) into:self.cover];
+}
+@end
+
+@interface MCRootController () <UIGestureRecognizerDelegate>
 @property (nonatomic, strong) UIView *miniTray;
+@property (nonatomic, strong) UIView *miniCarousel;
+@property (nonatomic, strong) MCMiniPreview *miniNextPreview;
+@property (nonatomic, strong) MCMiniPreview *miniPreviousPreview;
+@property (nonatomic, strong) UIPanGestureRecognizer *miniPan;
+@property (nonatomic, strong) MCQueueTransition *miniNextPlan;
+@property (nonatomic, strong) MCQueueTransition *miniPreviousPlan;
+@property (nonatomic) BOOL miniPanning, miniSettling, miniNoFadeUpdate;
+@property (nonatomic) NSUInteger miniPanGeneration;
 @property (nonatomic, strong) UIButton *mini;
 @property (nonatomic, strong) MCPlaybackButton *toggleButton;
 @property (nonatomic, strong) MCPlaybackButton *miniPrevious;
@@ -944,18 +1004,24 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
     self.miniTray.tag = 8080;
     self.miniTray.clipsToBounds = YES;
     [self.view addSubview:self.miniTray];
+    self.miniCarousel = [UIView new];
+    self.miniCarousel.clipsToBounds = YES;
+    [self.miniTray addSubview:self.miniCarousel];
     self.mini = MCTextButton();
-    [self.miniTray addSubview:self.mini];
+    [self.miniCarousel addSubview:self.mini];
     [self.mini addTarget:self action:@selector(now) forControlEvents:UIControlEventTouchUpInside];
     [self.mini addTarget:self action:@selector(miniPressed) forControlEvents:UIControlEventTouchDown];
     [self.mini addTarget:self action:@selector(miniReleased)
           forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
     self.mini.accessibilityHint = @"点按打开播放页面，左滑下一首，右滑上一首";
-    for (NSNumber *direction in @[@(UISwipeGestureRecognizerDirectionLeft), @(UISwipeGestureRecognizerDirectionRight)]) {
-        UISwipeGestureRecognizer *swipe = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(miniSwipe:)];
-        swipe.direction = direction.unsignedIntegerValue;
-        [self.miniTray addGestureRecognizer:swipe];
-    }
+    self.miniNextPreview = [MCMiniPreview new];
+    self.miniPreviousPreview = [MCMiniPreview new];
+    self.miniNextPreview.hidden = self.miniPreviousPreview.hidden = YES;
+    [self.miniCarousel addSubview:self.miniNextPreview];
+    [self.miniCarousel addSubview:self.miniPreviousPreview];
+    self.miniPan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(miniDragged:)];
+    self.miniPan.delegate = self;
+    [self.miniTray addGestureRecognizer:self.miniPan];
     self.miniCover = [UIImageView new];
     self.miniCover.contentMode = UIViewContentModeScaleAspectFill;
     self.miniCover.layer.cornerRadius = 8;
@@ -975,8 +1041,10 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
     self.miniArtist.lineBreakMode = NSLineBreakByTruncatingTail;
     [self.mini addSubview:self.miniArtist];
     self.miniBoundary = [UIView new];
+    self.miniBoundary.opaque = NO;
     self.miniBoundary.userInteractionEnabled = NO;
     self.miniProgress = [UIView new];
+    self.miniProgress.opaque = NO;
     self.miniProgress.userInteractionEnabled = NO;
     self.miniPrevious = [[MCPlaybackButton alloc] initWithFrame:CGRectZero];
     self.miniPrevious.icon = MCPlaybackIconPrevious;
@@ -1008,7 +1076,9 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
     [self update];
 }
 - (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; }
-- (void)motionChanged { if (!MCMotionEnabled()) MCFinishAnimations(self.miniTray); }
+- (void)motionChanged {
+    if (!MCMotionEnabled()) { [self resetMiniPan]; MCFinishAnimations(self.miniTray); }
+}
 - (UIImage *)tabIcon:(NSUInteger)i {
     UIGraphicsBeginImageContextWithOptions(CGSizeMake(25, 25), NO, 0);
     UIBezierPath *p = [UIBezierPath bezierPath];
@@ -1038,7 +1108,12 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
     [super viewDidLayoutSubviews];
     CGFloat w = self.view.bounds.size.width, y = self.tabBar.frame.origin.y - 52;
     self.miniTray.frame = CGRectMake(0, y, w, 52);
-    self.mini.frame = CGRectMake(0, 2, w - 132, 50);
+    self.miniCarousel.frame = CGRectMake(0, 2, w - 132, 50);
+    CGFloat panelWidth = self.miniCarousel.bounds.size.width;
+    self.mini.bounds = self.miniNextPreview.bounds = self.miniPreviousPreview.bounds = CGRectMake(0, 0, panelWidth, 50);
+    self.mini.center = CGPointMake(panelWidth / 2, 25);
+    self.miniNextPreview.center = CGPointMake(panelWidth * 1.5, 25);
+    self.miniPreviousPreview.center = CGPointMake(-panelWidth / 2, 25);
     self.miniCover.frame = CGRectMake(12, 8, 32, 32);
     self.miniTitle.frame = CGRectMake(54, 6, MAX(0, w - 194), 20);
     self.miniArtist.frame = CGRectMake(54, 27, MAX(0, w - 194), 16);
@@ -1053,6 +1128,9 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
     MCPlayer *p = [MCPlayer sharedPlayer];
     MCTheme *t = [MCTheme sharedTheme];
     self.miniTray.backgroundColor = t.surface;
+    self.miniCarousel.backgroundColor = t.surface;
+    [self.miniNextPreview applyTheme];
+    [self.miniPreviousPreview applyTheme];
     self.mini.backgroundColor = t.surface;
     self.toggleButton.backgroundColor = t.surface;
     self.miniTitle.textColor = t.text;
@@ -1069,6 +1147,7 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
     }
     NSString *identifier = p.currentTrack[@"id"];
     BOOL changed = !(self.miniTrackID == identifier || [self.miniTrackID isEqual:identifier]);
+    if (changed && (self.miniPanning || self.miniSettling)) [self resetMiniPan];
     self.miniTrackID = identifier;
     NSString *title = p.currentTrack ? MCS(p.currentTrack[@"title"]) : @"暮雨音乐";
     NSString *artist = p.currentTrack ? MCS(p.currentTrack[@"artist"]) : @"选择一首歌开始";
@@ -1082,7 +1161,7 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
             self.miniTitle.alpha = self.miniArtist.alpha = 1;
             self.miniTitle.transform = self.miniArtist.transform = CGAffineTransformIdentity;
         });
-    } else if (changed) {
+    } else if (changed && !self.miniNoFadeUpdate) {
         MCFadeChange(self.miniTitle, .16, ^{ self.miniTitle.text = title; });
         MCFadeChange(self.miniArtist, .16, ^{ self.miniArtist.text = artist; });
     } else {
@@ -1096,7 +1175,7 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
         self.miniArtwork = artwork;
         self.miniArtworkReady = NO;
         __weak MCRootController *w = self;
-        [[MCArtwork sharedCache] load:artwork into:self.miniCover animated:YES completion:^(UIImage *image) {
+        [[MCArtwork sharedCache] load:artwork into:self.miniCover animated:!self.miniNoFadeUpdate completion:^(UIImage *image) {
             MCRootController *s = w;
             if (!s || !(s.miniArtwork == artwork || [s.miniArtwork isEqual:artwork])) return;
             s.miniArtworkReady = image != nil;
@@ -1145,10 +1224,65 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
 - (void)miniReleased { self.miniCover.alpha = self.miniTitle.alpha = self.miniArtist.alpha = 1; }
 - (void)miniPreviousTapped { self.miniSlideDirection = -1; [[MCPlayer sharedPlayer] previous]; }
 - (void)miniNextTapped { self.miniSlideDirection = 1; [[MCPlayer sharedPlayer] next]; }
-- (void)miniSwipe:(UISwipeGestureRecognizer *)swipe {
-    [self miniReleased];
-    if (swipe.direction == UISwipeGestureRecognizerDirectionLeft) [self miniNextTapped];
-    else [self miniPreviousTapped];
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)recognizer {
+    if (recognizer != self.miniPan) return YES;
+    CGPoint velocity = [self.miniPan velocityInView:self.miniTray];
+    return !self.miniSettling && [MCPlayer sharedPlayer].currentTrack &&
+        fabs(velocity.x) > fabs(velocity.y);
+}
+- (void)setMiniPanOffset:(CGFloat)offset {
+    CGAffineTransform transform = CGAffineTransformMakeTranslation(offset, 0);
+    self.mini.transform = self.miniNextPreview.transform = self.miniPreviousPreview.transform = transform;
+}
+- (void)resetMiniPan {
+    self.miniPanGeneration++;
+    self.miniPanning = self.miniSettling = NO;
+    MCFinishAnimations(self.miniCarousel);
+    [self setMiniPanOffset:0];
+    self.miniNextPreview.hidden = self.miniPreviousPreview.hidden = YES;
+    self.miniNextPlan = self.miniPreviousPlan = nil;
+}
+- (void)miniDragged:(UIPanGestureRecognizer *)gesture {
+    CGFloat width = self.miniCarousel.bounds.size.width;
+    if (gesture.state == UIGestureRecognizerStateBegan) {
+        [self resetMiniPan];
+        [self miniReleased];
+        self.miniPanning = YES;
+        MCPlayer *player = [MCPlayer sharedPlayer];
+        self.miniNextPlan = [player queueTransitionForward:YES];
+        self.miniPreviousPlan = [player queueTransitionForward:NO];
+        [self.miniNextPreview showTrack:self.miniNextPlan.track];
+        [self.miniPreviousPreview showTrack:self.miniPreviousPlan.track];
+        self.miniNextPreview.hidden = !self.miniNextPlan || !MCMotionEnabled();
+        self.miniPreviousPreview.hidden = !self.miniPreviousPlan || !MCMotionEnabled();
+    }
+    if (!self.miniPanning) return;
+    CGFloat translation = [gesture translationInView:self.miniTray].x;
+    BOOL available = translation < 0 ? self.miniNextPlan != nil : self.miniPreviousPlan != nil;
+    if (gesture.state == UIGestureRecognizerStateChanged) {
+        if (MCMotionEnabled()) [self setMiniPanOffset:MCMiniDragOffset(translation, width, available)];
+        return;
+    }
+    if (gesture.state != UIGestureRecognizerStateEnded && gesture.state != UIGestureRecognizerStateCancelled &&
+        gesture.state != UIGestureRecognizerStateFailed) return;
+    int direction = gesture.state == UIGestureRecognizerStateEnded ?
+        MCMiniDragDestination(translation, [gesture velocityInView:self.miniTray].x, width,
+                             self.miniPreviousPlan != nil, self.miniNextPlan != nil) : 0;
+    MCQueueTransition *plan = direction < 0 ? self.miniNextPlan : direction > 0 ? self.miniPreviousPlan : nil;
+    self.miniPanning = NO;
+    self.miniSettling = YES;
+    NSUInteger generation = ++self.miniPanGeneration;
+    MCAnimateCompletion(.18, UIViewAnimationOptionCurveEaseOut, ^{
+        [self setMiniPanOffset:direction * width];
+    }, ^(BOOL finished) {
+        (void)finished;
+        if (generation != self.miniPanGeneration) return;
+        [self resetMiniPan];
+        self.miniNoFadeUpdate = YES;
+        if (plan) [[MCPlayer sharedPlayer] commitQueueTransition:plan];
+        [self update];
+        self.miniNoFadeUpdate = NO;
+    });
 }
 - (void)toggle {
     [[MCPlayer sharedPlayer] toggle];

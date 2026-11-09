@@ -17,6 +17,7 @@ static NSString *MCCacheSize(unsigned long long bytes) {
 @property (nonatomic, copy) NSDictionary *cacheStats;
 @end
 @implementation MCSettingsController
+- (id)init { return [super initWithStyle:UITableViewStyleGrouped]; }
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"设置";

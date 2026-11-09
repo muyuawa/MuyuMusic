@@ -321,6 +321,8 @@ static UIImage *MCThemeBackImage(UIColor *color) {
 @implementation MCThemedTextButton
 - (id)initWithFrame:(CGRect)frame {
     if ((self = [super initWithFrame:frame])) {
+        self.opaque = NO;
+        self.backgroundColor = [UIColor clearColor];
         self.titleLabel.font = [UIFont systemFontOfSize:15];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updateColors)
             name:MCThemeDidChangeNotification object:nil];

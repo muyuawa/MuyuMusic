@@ -53,6 +53,12 @@ size_t mc_playback_shuffle_next(size_t count, size_t current, unsigned char *vis
         }
     return SIZE_MAX;
 }
+size_t mc_playback_shuffle_preview(size_t count, size_t current, const unsigned char *visited, int repeat,
+                                   uint32_t randomValue, unsigned char *nextVisited) {
+    if (!visited || !nextVisited || visited == nextVisited || !count || current >= count) return SIZE_MAX;
+    memcpy(nextVisited, visited, count);
+    return mc_playback_shuffle_next(count, current, nextVisited, repeat, randomValue);
+}
 size_t mc_playback_remove_index(size_t count, size_t current, size_t removed) {
     if (!count || removed >= count || current >= count)
         return current;

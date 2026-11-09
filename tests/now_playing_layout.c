@@ -63,5 +63,20 @@ int main(void) {
     assert(MCLyricCanFollow(14, 13, false, false));
     assert(MCLyricCanFollow(10, 0, false, false)); /* explicit seek/mode change */
     assert(MCLyricCenterInset(20, 44) == 0);
+    assert(MCMiniDragOffset(-40, 188, true) == -40);
+    assert(MCMiniDragOffset(999, 188, true) == 188);
+    assert(MCMiniDragOffset(-80, 188, false) == -20);
+    assert(MCMiniDragOffset(999, 188, false) <= 188 * .15);
+    assert(MCMiniDragOffset(NAN, 188, true) == 0);
+    assert(MCMiniDragDestination(-52, 0, 188, true, true) == 0);
+    assert(MCMiniDragDestination(-53, 0, 188, true, true) == -1);
+    assert(MCMiniDragDestination(53, 0, 188, true, true) == 1);
+    assert(MCMiniDragDestination(-10, -500, 188, true, true) == -1);
+    assert(MCMiniDragDestination(-10, 500, 188, true, true) == 0);
+    assert(MCMiniDragDestination(-3, -1000, 188, true, true) == 0);
+    assert(MCMiniDragDestination(-100, -500, 188, true, false) == 0);
+    assert(MCMiniDragDestination(100, 500, 188, false, true) == 0);
+    assert(MCMiniDragDestination(NAN, 0, 188, true, true) == 0);
+    assert(MCMiniDragDestination(100, 500, 0, true, true) == 0);
     puts("Now-playing layout and lyric follow checks passed");
 }

@@ -14,4 +14,7 @@ MCNowPlayingLayout MCNowPlayingMakeLayout(double width, double height);
 double MCLyricCenterInset(double height, double rowHeight);
 double MCLyricCenterOffset(unsigned row, double height, double rowHeight);
 bool MCLyricCanFollow(double now, double resumeAfter, bool dragging, bool decelerating);
+double MCMiniDragOffset(double translation, double width, bool available);
+/* -1 next, +1 previous, 0 return to current. */
+int MCMiniDragDestination(double translation, double velocity, double width, bool previous, bool next);
 #endif

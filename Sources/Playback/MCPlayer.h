@@ -2,6 +2,10 @@
 extern NSString *const MCPlayerDidChangeNotification;
 extern NSString *const MCPlayerProgressNotification;
 
+@interface MCQueueTransition : NSObject
+@property (nonatomic, readonly, copy) NSDictionary *track;
+@end
+
 @interface MCPlayer : NSObject
 + (instancetype)sharedPlayer;
 @property (nonatomic, readonly) NSArray *queue;
@@ -25,6 +29,9 @@ extern NSString *const MCPlayerProgressNotification;
 - (void)pause;
 - (void)next;
 - (void)previous;
+/* Preview is side-effect-free, including shuffle. Commit rejects stale queue/state. */
+- (MCQueueTransition *)queueTransitionForward:(BOOL)forward;
+- (BOOL)commitQueueTransition:(MCQueueTransition *)transition;
 - (void)seek:(NSTimeInterval)position;
 - (void)retry;
 - (void)handleRemoteEvent:(UIEvent *)event;

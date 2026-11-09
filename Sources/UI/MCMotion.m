@@ -12,14 +12,18 @@ void MCSetMotionEnabled(BOOL enabled) {
     [[NSNotificationCenter defaultCenter] postNotificationName:MCMotionDidChangeNotification object:nil];
 }
 void MCAnimate(NSTimeInterval duration, UIViewAnimationOptions options, void (^changes)(void)) {
+    MCAnimateCompletion(duration, options, changes, nil);
+}
+void MCAnimateCompletion(NSTimeInterval duration, UIViewAnimationOptions options, void (^changes)(void), void (^completion)(BOOL)) {
     if (!changes) return;
     if (!MCMotionEnabled() || [UIApplication sharedApplication].applicationState != UIApplicationStateActive) {
         changes();
+        if (completion) completion(YES);
         return;
     }
     [UIView animateWithDuration:duration delay:0
         options:options | UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction
-        animations:changes completion:nil];
+        animations:changes completion:completion];
 }
 void MCFadeChange(UIView *view, NSTimeInterval duration, void (^changes)(void)) {
     if (!changes) return;

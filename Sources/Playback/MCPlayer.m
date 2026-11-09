@@ -27,6 +27,18 @@ static void *MCPlayerItemContext = &MCPlayerItemContext;
         }                                                                                                    \
     } while (0)
 
+@interface MCQueueTransition ()
+@property (nonatomic, copy) NSDictionary *track;
+@property (nonatomic, weak) MCPlayer *owner;
+@property (nonatomic, strong) NSArray *queue;
+@property (nonatomic) NSUInteger currentIndex, targetIndex, generation;
+@property (nonatomic) NSInteger repeatMode;
+@property (nonatomic) BOOL shuffle, forward, removeHistory;
+@property (nonatomic, strong) NSMutableData *visited;
+@end
+@implementation MCQueueTransition
+@end
+
 @interface MCPlayer () {
     NSArray *_queue;
     NSUInteger _index, _generation;
@@ -375,6 +387,43 @@ static void *MCPlayerItemContext = &MCPlayerItemContext;
 - (void)next {
     MC_MAIN([self next]);
     [self advanceAutomatically:NO];
+}
+- (MCQueueTransition *)queueTransitionForward:(BOOL)forward {
+    NSAssert([NSThread isMainThread], @"Queue previews run on main");
+    if (!self.currentTrack) return nil;
+    MCQueueTransition *plan = [MCQueueTransition new];
+    plan.owner = self;
+    plan.queue = _queue;
+    plan.currentIndex = _index;
+    plan.generation = _generation;
+    plan.repeatMode = _repeatMode;
+    plan.shuffle = _shuffle;
+    plan.forward = forward;
+    NSUInteger target = NSNotFound;
+    if (forward && _shuffle) {
+        plan.visited = [NSMutableData dataWithLength:_queue.count];
+        target = mc_playback_shuffle_preview(_queue.count, _index, _shuffleVisited.bytes,
+            _repeatMode == 2 ? 0 : (int)_repeatMode, arc4random(), plan.visited.mutableBytes);
+    } else if (forward) target = mc_playback_next(_queue.count, _index, (int)_repeatMode, 0, 0, 0);
+    else if (_shuffle && _history.count) {
+        target = [_history.lastObject unsignedIntegerValue];
+        plan.removeHistory = YES;
+    } else if (_index) target = _index - 1;
+    else if (_repeatMode == 1) target = _queue.count - 1;
+    if (target >= _queue.count || target == _index) return nil;
+    plan.targetIndex = target;
+    plan.track = _queue[target];
+    return plan;
+}
+- (BOOL)commitQueueTransition:(MCQueueTransition *)plan {
+    NSAssert([NSThread isMainThread], @"Queue transitions run on main");
+    if (!plan || plan.owner != self || plan.queue != _queue || plan.currentIndex != _index ||
+        plan.generation != _generation || plan.repeatMode != _repeatMode || plan.shuffle != _shuffle ||
+        plan.targetIndex >= _queue.count) return NO;
+    if (plan.visited) _shuffleVisited = [plan.visited mutableCopy];
+    if (plan.removeHistory && _history.count) [_history removeLastObject];
+    [self selectIndex:plan.targetIndex history:plan.forward];
+    return YES;
 }
 - (void)previous {
     MC_MAIN([self previous]);

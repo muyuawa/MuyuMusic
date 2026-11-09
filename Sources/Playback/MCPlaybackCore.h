@@ -9,6 +9,8 @@ size_t mc_playback_next(size_t count, size_t current, int repeat, int shuffle, u
                         int automatic);
 size_t mc_playback_shuffle_next(size_t count, size_t current, unsigned char *visited, int repeat,
                                 uint32_t randomValue);
+size_t mc_playback_shuffle_preview(size_t count, size_t current, const unsigned char *visited, int repeat,
+                                   uint32_t randomValue, unsigned char *nextVisited);
 size_t mc_playback_remove_index(size_t count, size_t current, size_t removed);
 size_t mc_playback_move_index(size_t current, size_t from, size_t to);
 double mc_playback_seek(double requested, double duration);

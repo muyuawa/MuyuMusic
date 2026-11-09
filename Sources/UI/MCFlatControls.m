@@ -205,7 +205,7 @@
 }
 - (CGFloat)heightForText:(NSString *)text table:(UITableView *)table header:(BOOL)header {
     if (!text.length)
-        return table.style == UITableViewStyleGrouped ? 10 : .01;
+        return table.style == UITableViewStyleGrouped ? 10 : 0;
     UIFont *font = header ? [UIFont boldSystemFontOfSize:13] : [UIFont systemFontOfSize:13];
     CGSize size = [text sizeWithFont:font
                    constrainedToSize:CGSizeMake(MAX(1, table.bounds.size.width - 32), CGFLOAT_MAX)
@@ -218,6 +218,7 @@
     CGFloat height = [self heightForText:text table:table header:header];
     UIView *container = [[UIView alloc] initWithFrame:CGRectMake(0, 0, table.bounds.size.width, height)];
     container.backgroundColor = [UIColor clearColor];
+    container.opaque = NO;
     UILabel *label =
         [[UILabel alloc] initWithFrame:CGRectMake(16, 10, MAX(1, table.bounds.size.width - 32), height - 20)];
     label.backgroundColor = [UIColor clearColor];
