@@ -1,5 +1,6 @@
 #import "MCFlatControls.h"
 #import "MCTheme.h"
+#import "MCMotion.h"
 #import <QuartzCore/QuartzCore.h>
 
 @interface MCFlatSwitch ()
@@ -60,13 +61,12 @@
 - (void)setOn:(BOOL)on animated:(BOOL)animated {
     _on = on;
     self.accessibilityValue = on ? @"已开启" : @"已关闭";
-    if (animated) {
-        [UIView animateWithDuration:.16
-                         animations:^{
-                             [self layoutThumb];
-                         }];
-    } else
+    if (animated && MCMotionEnabled()) {
+        MCAnimate(.16, UIViewAnimationOptionCurveEaseOut, ^{ [self layoutThumb]; });
+    } else {
+        MCFinishAnimations(self);
         [self setNeedsLayout];
+    }
 }
 - (void)layoutThumb {
     CGFloat height = self.bounds.size.height;
@@ -155,11 +155,11 @@
     [self clearLabelBackgrounds];
 }
 - (void)setSelected:(BOOL)selected animated:(BOOL)animated {
-    [super setSelected:selected animated:animated];
+    [super setSelected:selected animated:animated && MCMotionEnabled()];
     [self clearLabelBackgrounds];
 }
 - (void)setHighlighted:(BOOL)highlighted animated:(BOOL)animated {
-    [super setHighlighted:highlighted animated:animated];
+    [super setHighlighted:highlighted animated:animated && MCMotionEnabled()];
     [self clearLabelBackgrounds];
 }
 - (UITableViewCellAccessoryType)accessoryType {
@@ -182,6 +182,17 @@
 @end
 
 @implementation MCFlatTableController
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    UIView *tray = [self.tabBarController.view viewWithTag:8080];
+    if (!tray || tray.hidden) return;
+    // The tray overlays the navigation content, so reserve it in every list.
+    CGFloat bottom = MAX(52, tray.bounds.size.height) + 8;
+    UIEdgeInsets content = self.tableView.contentInset;
+    UIEdgeInsets indicator = self.tableView.scrollIndicatorInsets;
+    if (content.bottom < bottom) { content.bottom = bottom; self.tableView.contentInset = content; }
+    if (indicator.bottom < bottom) { indicator.bottom = bottom; self.tableView.scrollIndicatorInsets = indicator; }
+}
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
     (void)tableView;
     (void)section;

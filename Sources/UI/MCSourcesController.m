@@ -5,6 +5,7 @@
 #import "MCTheme.h"
 #import "MCFlatControls.h"
 #import "MCDialogs.h"
+#import "MCMotion.h"
 #import "MCLegal.h"
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -176,7 +177,7 @@ static NSString *MCSourceText(id value) {
 - (void)textFieldDidBeginEditing:(UITextField *)field {
     [self.tableView scrollToRowAtIndexPath:[NSIndexPath indexPathForRow:field.tag inSection:0]
                           atScrollPosition:UITableViewScrollPositionMiddle
-                                  animated:YES];
+                                  animated:MCMotionEnabled()];
 }
 - (BOOL)textFieldShouldReturn:(UITextField *)field {
     if (field.tag < 2)
@@ -226,7 +227,7 @@ static NSString *MCSourceText(id value) {
     return cell;
 }
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)path {
-    [tableView deselectRowAtIndexPath:path animated:YES];
+    [tableView deselectRowAtIndexPath:path animated:MCMotionEnabled()];
     if (path.section != 1)
         return;
     [self.view endEditing:YES];
@@ -383,7 +384,7 @@ static NSString *MCSourceText(id value) {
     return cell;
 }
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)path {
-    [tableView deselectRowAtIndexPath:path animated:YES];
+    [tableView deselectRowAtIndexPath:path animated:MCMotionEnabled()];
     MCSourceRepository *repository = [MCSourceRepository sharedRepository];
     if (path.section == 0) {
         NSMutableString *message = [repository.statusText mutableCopy];
@@ -558,7 +559,7 @@ static NSString *MCSourceText(id value) {
     return cell;
 }
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)path {
-    [tableView deselectRowAtIndexPath:path animated:YES];
+    [tableView deselectRowAtIndexPath:path animated:MCMotionEnabled()];
     if (path.section == 3) {
         MCMessage(self, @"第三方音源免责声明", MCSourceDisclaimerText);
         return;

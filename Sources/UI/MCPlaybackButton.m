@@ -1,4 +1,5 @@
 #import "MCPlaybackButton.h"
+#import "MCMotion.h"
 
 static void MCLine(CGContextRef c, CGFloat x1, CGFloat y1, CGFloat x2, CGFloat y2) {
     CGContextMoveToPoint(c, x1, y1);
@@ -16,13 +17,24 @@ static void MCTriangle(CGContextRef c, CGFloat x, CGFloat direction) {
     if ((self = [super initWithFrame:frame])) {
         self.opaque = NO;
         self.backgroundColor = [UIColor clearColor];
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(motionChanged)
+            name:MCMotionDidChangeNotification object:nil];
     }
     return self;
 }
-- (void)setIcon:(MCPlaybackIcon)icon { _icon = icon; [self setNeedsDisplay]; }
+- (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; }
+- (void)motionChanged { if (!MCMotionEnabled()) MCFinishAnimations(self); }
+- (void)setIcon:(MCPlaybackIcon)icon {
+    if (_icon == icon) return;
+    MCFadeChange(self, .12, ^{ self->_icon = icon; [self setNeedsDisplay]; });
+}
 - (void)setInk:(UIColor *)ink { _ink = ink; [self setNeedsDisplay]; }
 - (void)setFill:(UIColor *)fill { _fill = fill; [self setNeedsDisplay]; }
-- (void)setHighlighted:(BOOL)value { [super setHighlighted:value]; [self setNeedsDisplay]; }
+- (void)setHighlighted:(BOOL)value {
+    [super setHighlighted:value];
+    [self setNeedsDisplay];
+    MCAnimate(.10, UIViewAnimationOptionCurveEaseOut, ^{ self.alpha = value ? .82 : 1; });
+}
 - (void)setSelected:(BOOL)value { [super setSelected:value]; [self setNeedsDisplay]; }
 - (void)setEnabled:(BOOL)value { [super setEnabled:value]; [self setNeedsDisplay]; }
 - (void)drawRect:(CGRect)rect {

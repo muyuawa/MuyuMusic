@@ -1,5 +1,6 @@
 #import "MCArtwork.h"
 #import "MCHTTPClient.h"
+#import "MCMotion.h"
 #import <ImageIO/ImageIO.h>
 #import <CommonCrypto/CommonDigest.h>
 #import <objc/runtime.h>
@@ -69,7 +70,9 @@
 }
 - (void)display:(UIImage *)image location:(NSString *)location view:(UIImageView *)view {
     if (image && [objc_getAssociatedObject(view, @selector(load:into:)) isEqual:location]) {
-        view.image = image;
+        if ([objc_getAssociatedObject(view, @selector(load:into:animated:completion:)) boolValue])
+            MCFadeChange(view, .18, ^{ view.image = image; });
+        else view.image = image;
         [view.superview setNeedsLayout];
         void (^completion)(UIImage *) = objc_getAssociatedObject(view, @selector(load:into:completion:));
         if (completion) completion(image);
@@ -79,10 +82,14 @@
     [self load:location into:view completion:nil];
 }
 - (void)load:(NSString *)location into:(UIImageView *)view completion:(void (^)(UIImage *))completion {
+    [self load:location into:view animated:NO completion:completion];
+}
+- (void)load:(NSString *)location into:(UIImageView *)view animated:(BOOL)animated completion:(void (^)(UIImage *))completion {
     MCRequest *previous = objc_getAssociatedObject(view, @selector(warning));
     [previous cancel];
     objc_setAssociatedObject(view, @selector(warning), nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     view.image = [UIImage imageNamed:@"AppPlaceholder"];
+    objc_setAssociatedObject(view, @selector(load:into:animated:completion:), @(animated), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     objc_setAssociatedObject(view, @selector(load:into:completion:), completion, OBJC_ASSOCIATION_COPY_NONATOMIC);
     objc_setAssociatedObject(view, @selector(load:into:), location, OBJC_ASSOCIATION_COPY_NONATOMIC);
     if (completion) completion(nil);
@@ -90,8 +97,7 @@
         return;
     UIImage *cached = [self.memory objectForKey:location];
     if (cached) {
-        view.image = cached;
-        if (completion) completion(cached);
+        [self display:cached location:location view:view];
         return;
     }
     __weak UIImageView *weakView = view;

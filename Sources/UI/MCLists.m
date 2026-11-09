@@ -7,6 +7,7 @@
 #import "MCLibrary.h"
 #import "MCPlayer.h"
 #import "MCPlaybackButton.h"
+#import "MCMotion.h"
 #import <QuartzCore/QuartzCore.h>
 #import <objc/runtime.h>
 #include <math.h>
@@ -562,7 +563,7 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
     return c;
 }
 - (void)tableView:(UITableView *)t didSelectRowAtIndexPath:(NSIndexPath *)p {
-    [t deselectRowAtIndexPath:p animated:YES];
+    [t deselectRowAtIndexPath:p animated:MCMotionEnabled()];
     if ([self isTrackKind]) {
         if (self.flatEditing && [self.kind isEqual:@"queue"]) { [self editQueueRow:p.row]; return; }
         [[MCPlayer sharedPlayer] playTracks:self.items index:p.row];
@@ -787,7 +788,7 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
     });
 }
 - (void)tableView:(UITableView *)t didSelectRowAtIndexPath:(NSIndexPath *)p {
-    [t deselectRowAtIndexPath:p animated:YES];
+    [t deselectRowAtIndexPath:p animated:MCMotionEnabled()];
     if (p.row == 5) {
         [self.navigationController pushViewController:[MCAccountController new] animated:YES];
         return;
@@ -838,6 +839,8 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
 @property (nonatomic, strong) UIView *miniBoundary;
 @property (nonatomic, strong) UIView *miniProgress;
 @property (nonatomic, copy) NSString *miniArtwork;
+@property (nonatomic, copy) NSString *miniTrackID;
+@property (nonatomic) NSInteger miniSlideDirection;
 @property (nonatomic) BOOL miniArtworkReady;
 @property (nonatomic) BOOL lastFollowArtwork;
 @property (nonatomic, copy) NSString *lastLibraryError;
@@ -847,6 +850,21 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
 @property (nonatomic, strong) UIView *outgoingLeftView;
 @end
 @implementation MCNavigationController
+- (void)pushViewController:(UIViewController *)controller animated:(BOOL)animated {
+    [super pushViewController:controller animated:animated && MCMotionEnabled()];
+}
+- (UIViewController *)popViewControllerAnimated:(BOOL)animated {
+    return [super popViewControllerAnimated:animated && MCMotionEnabled()];
+}
+- (NSArray *)popToViewController:(UIViewController *)controller animated:(BOOL)animated {
+    return [super popToViewController:controller animated:animated && MCMotionEnabled()];
+}
+- (NSArray *)popToRootViewControllerAnimated:(BOOL)animated {
+    return [super popToRootViewControllerAnimated:animated && MCMotionEnabled()];
+}
+- (void)setViewControllers:(NSArray *)controllers animated:(BOOL)animated {
+    [super setViewControllers:controllers animated:animated && MCMotionEnabled()];
+}
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.delegate = self;
@@ -985,9 +1003,12 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
                                                object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updateMiniProgress)
         name:MCPlayerProgressNotification object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(motionChanged)
+        name:MCMotionDidChangeNotification object:nil];
     [self update];
 }
 - (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; }
+- (void)motionChanged { if (!MCMotionEnabled()) MCFinishAnimations(self.miniTray); }
 - (UIImage *)tabIcon:(NSUInteger)i {
     UIGraphicsBeginImageContextWithOptions(CGSizeMake(25, 25), NO, 0);
     UIBezierPath *p = [UIBezierPath bezierPath];
@@ -1046,15 +1067,36 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
         [t applyToNavigationBar:nav.navigationBar];
         if (@available(iOS 7.0, *)) [nav setNeedsStatusBarAppearanceUpdate];
     }
-    self.miniTitle.text = p.currentTrack ? MCS(p.currentTrack[@"title"]) : @"暮雨音乐";
-    self.miniArtist.text = p.currentTrack ? MCS(p.currentTrack[@"artist"]) : @"选择一首歌开始";
+    NSString *identifier = p.currentTrack[@"id"];
+    BOOL changed = !(self.miniTrackID == identifier || [self.miniTrackID isEqual:identifier]);
+    self.miniTrackID = identifier;
+    NSString *title = p.currentTrack ? MCS(p.currentTrack[@"title"]) : @"暮雨音乐";
+    NSString *artist = p.currentTrack ? MCS(p.currentTrack[@"artist"]) : @"选择一首歌开始";
+    if (changed && self.miniSlideDirection && MCMotionEnabled() && self.miniTray.window && !self.miniTray.hidden) {
+        CGFloat offset = self.miniSlideDirection * 10;
+        self.miniTitle.text = title;
+        self.miniArtist.text = artist;
+        self.miniTitle.alpha = self.miniArtist.alpha = 0;
+        self.miniTitle.transform = self.miniArtist.transform = CGAffineTransformMakeTranslation(offset, 0);
+        MCAnimate(.18, UIViewAnimationOptionCurveEaseOut, ^{
+            self.miniTitle.alpha = self.miniArtist.alpha = 1;
+            self.miniTitle.transform = self.miniArtist.transform = CGAffineTransformIdentity;
+        });
+    } else if (changed) {
+        MCFadeChange(self.miniTitle, .16, ^{ self.miniTitle.text = title; });
+        MCFadeChange(self.miniArtist, .16, ^{ self.miniArtist.text = artist; });
+    } else {
+        self.miniTitle.text = title;
+        self.miniArtist.text = artist;
+    }
+    self.miniSlideDirection = 0;
     self.mini.accessibilityLabel = [NSString stringWithFormat:@"%@，%@", self.miniTitle.text, self.miniArtist.text];
     NSString *artwork = p.currentTrack[@"artwork"];
     if (!(self.miniArtwork == artwork || [self.miniArtwork isEqual:artwork])) {
         self.miniArtwork = artwork;
         self.miniArtworkReady = NO;
         __weak MCRootController *w = self;
-        [[MCArtwork sharedCache] load:artwork into:self.miniCover completion:^(UIImage *image) {
+        [[MCArtwork sharedCache] load:artwork into:self.miniCover animated:YES completion:^(UIImage *image) {
             MCRootController *s = w;
             if (!s || !(s.miniArtwork == artwork || [s.miniArtwork isEqual:artwork])) return;
             s.miniArtworkReady = image != nil;
@@ -1075,7 +1117,16 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
     MCPlayer *player = [MCPlayer sharedPlayer];
     double progress = player.currentTrack && isfinite(player.duration) && player.duration > 0 && isfinite(player.position)
         ? MAX(0, MIN(1, player.position / player.duration)) : 0;
-    self.miniProgress.frame = CGRectMake(0, 0, self.miniTray.bounds.size.width * progress, 2);
+    CGFloat width = self.miniTray.bounds.size.width * progress;
+    CGFloat previous = self.miniProgress.frame.size.width;
+    void (^change)(void) = ^{ self.miniProgress.frame = CGRectMake(0, 0, width, 2); };
+    if (!self.miniTray.hidden && self.miniTray.window && width > previous &&
+        width - previous < MAX(1, self.miniTray.bounds.size.width * .08))
+        MCAnimate(.45, UIViewAnimationOptionCurveLinear, change);
+    else {
+        MCFinishAnimations(self.miniProgress);
+        change();
+    }
 }
 - (void)libraryError:(NSNotification *)note {
     NSArray *errors = note.userInfo[@"errors"];
@@ -1092,8 +1143,8 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
 }
 - (void)miniPressed { self.miniCover.alpha = self.miniTitle.alpha = self.miniArtist.alpha = .65; }
 - (void)miniReleased { self.miniCover.alpha = self.miniTitle.alpha = self.miniArtist.alpha = 1; }
-- (void)miniPreviousTapped { [[MCPlayer sharedPlayer] previous]; }
-- (void)miniNextTapped { [[MCPlayer sharedPlayer] next]; }
+- (void)miniPreviousTapped { self.miniSlideDirection = -1; [[MCPlayer sharedPlayer] previous]; }
+- (void)miniNextTapped { self.miniSlideDirection = 1; [[MCPlayer sharedPlayer] next]; }
 - (void)miniSwipe:(UISwipeGestureRecognizer *)swipe {
     [self miniReleased];
     if (swipe.direction == UISwipeGestureRecognizerDirectionLeft) [self miniNextTapped];

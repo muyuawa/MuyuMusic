@@ -1,5 +1,6 @@
 #import "MCDialogs.h"
 #import "MCTheme.h"
+#import "MCMotion.h"
 #import <QuartzCore/QuartzCore.h>
 #include <math.h>
 
@@ -176,8 +177,19 @@ static CGFloat MCDialogTextHeight(NSString *text, UIFont *font, CGFloat width) {
     [center addObserver:self selector:@selector(themeChanged:) name:MCThemeDidChangeNotification object:nil];
     [self applyTheme];
 }
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    if (MCMotionEnabled()) {
+        self.card.alpha = 0;
+    }
+}
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
+    if (MCMotionEnabled()) self.card.transform = CGAffineTransformMakeScale(.97, .97);
+    MCAnimate(.18, UIViewAnimationOptionCurveEaseOut, ^{
+        self.card.alpha = 1;
+        self.card.transform = CGAffineTransformIdentity;
+    });
     if (!self.owner.inactive) [self.field becomeFirstResponder];
     UIAccessibilityPostNotification(UIAccessibilityScreenChangedNotification, self.heading);
 }

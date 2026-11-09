@@ -5,6 +5,7 @@
 #import "MCMusicSources.h"
 #import "MCDialogs.h"
 #import "MCLegal.h"
+#import "MCMotion.h"
 #import "MCArtwork.h"
 #import "MCPlayer.h"
 #import "MCAudioCache.h"
@@ -53,11 +54,12 @@ static NSString *MCCacheSize(unsigned long long bytes) {
 }
 - (NSInteger)tableView:(UITableView *)t numberOfRowsInSection:(NSInteger)s {
     (void)t;
-    return s == 0 ? 4 : s == 1 ? 5 : 2;
+    return s == 0 ? 5 : s == 1 ? 5 : 2;
 }
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
     (void)tableView;
-    return section == 1 ? @"播放中的缓存会在播放结束后清理。" : nil;
+    return section == 0 ? @"动画效果立即生效，并记住你的选择。关闭后页面、封面、歌词和托盘直接更新。"
+         : section == 1 ? @"播放中的缓存会在播放结束后清理。" : nil;
 }
 - (NSString *)tableView:(UITableView *)t titleForHeaderInSection:(NSInteger)s {
     (void)t;
@@ -73,12 +75,12 @@ static NSString *MCCacheSize(unsigned long long bytes) {
     c.detailTextLabel.textColor = theme.muted;
     c.textLabel.font = [UIFont systemFontOfSize:15];
     if (p.section == 0) {
-        c.textLabel.text = @[ @"深色模式", @"跟随封面配色", @"主题色", @"自定义 HEX" ][p.row];
-        if (p.row <= 1) {
+        c.textLabel.text = @[ @"深色模式", @"跟随封面配色", @"主题色", @"自定义 HEX", @"动画效果" ][p.row];
+        if (p.row <= 1 || p.row == 4) {
             MCFlatSwitch *s = [MCFlatSwitch new];
-            s.on = p.row == 0 ? theme.dark : theme.followArtwork;
+            s.on = p.row == 0 ? theme.dark : p.row == 1 ? theme.followArtwork : MCMotionEnabled();
             [s addTarget:self
-                          action:p.row == 0 ? @selector(darkChanged:) : @selector(followChanged:)
+                          action:p.row == 0 ? @selector(darkChanged:) : p.row == 1 ? @selector(followChanged:) : @selector(motionChanged:)
                 forControlEvents:UIControlEventValueChanged];
             c.accessoryView = s;
         } else
@@ -125,8 +127,12 @@ static NSString *MCCacheSize(unsigned long long bytes) {
     self.tableView.backgroundColor = [MCTheme sharedTheme].background;
     [self.tableView reloadData];
 }
+- (void)motionChanged:(MCFlatSwitch *)control {
+    MCSetMotionEnabled(control.on);
+    if (!control.on) MCFinishAnimations(control);
+}
 - (void)tableView:(UITableView *)t didSelectRowAtIndexPath:(NSIndexPath *)p {
-    [t deselectRowAtIndexPath:p animated:YES];
+    [t deselectRowAtIndexPath:p animated:MCMotionEnabled()];
     __weak MCSettingsController *w = self;
     if (p.section == 0 && p.row == 2) {
         MCChoose(self, @"选择主题主色", @[ @"暮雨蓝", @"蔷薇粉", @"森林绿", @"鸢尾紫" ], ^(NSInteger i) {

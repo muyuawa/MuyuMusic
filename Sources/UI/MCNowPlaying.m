@@ -10,6 +10,7 @@
 #import "MCLyrics.h"
 #import "MCPlaybackButton.h"
 #import "MCNowPlayingLayout.h"
+#import "MCMotion.h"
 #import <QuartzCore/QuartzCore.h>
 #include <math.h>
 #include <float.h>
@@ -205,11 +206,19 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
                                                  name:MCThemeDidChangeNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refreshFavorite)
                                                  name:MCLibraryDidChangeNotification object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(motionChanged)
+        name:MCMotionDidChangeNotification object:nil];
     [[MCArtwork sharedCache] load:nil into:self.cover];
     [self update];
     [self theme];
 }
 - (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; }
+- (void)motionChanged {
+    if (!MCMotionEnabled()) {
+        MCFinishAnimations(self.content);
+        [self.lyricsTable setContentOffset:self.lyricsTable.contentOffset animated:NO];
+    }
+}
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     self.previousTranslucent = self.navigationController.navigationBar.translucent;
@@ -333,7 +342,7 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
         self.favoriteButton.selected = NO;
         self.favoriteChanging = NO;
         [self refreshFavorite];
-        [[MCArtwork sharedCache] load:track[@"artwork"] into:self.cover];
+        [[MCArtwork sharedCache] load:track[@"artwork"] into:self.cover animated:YES completion:nil];
         [self loadLyrics:track];
     } else if (!track) self.lyricsEmpty.text = @"选择歌曲后显示歌词";
     [self updateButtonColors];
@@ -387,7 +396,7 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
     CGFloat y = MCLyricCenterOffset((unsigned)self.activeLine, self.lyricsTable.bounds.size.height,
                                    self.lyricsTable.rowHeight);
     self.lyricsNeedCenter = NO;
-    [self.lyricsTable setContentOffset:CGPointMake(0, y) animated:animated];
+    [self.lyricsTable setContentOffset:CGPointMake(0, y) animated:animated && MCMotionEnabled()];
 }
 - (void)styleLyricCell:(UITableViewCell *)cell row:(NSInteger)row {
     BOOL active = row == self.activeLine;
@@ -406,13 +415,17 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
 }
 - (void)modeChanged {
     BOOL lyrics = self.mode.selectedSegmentIndex == 1;
-    self.cover.hidden = self.titleLabel.hidden = self.artistLabel.hidden = self.quality.hidden = lyrics;
-    self.lyricsTable.hidden = !lyrics;
-    self.lyricsResumeAfter = 0;
-    self.lyricsNeedCenter = YES;
-    [self update];
-    self.lyricsNeedCenter = YES;
-    [self centerLyrics:NO];
+    if (self.lyricsTable.hidden == !lyrics) return;
+    [self.content layoutIfNeeded];
+    MCFadeChange(self.content, .18, ^{
+        self.cover.hidden = self.titleLabel.hidden = self.artistLabel.hidden = self.quality.hidden = lyrics;
+        self.lyricsTable.hidden = !lyrics;
+        self.lyricsResumeAfter = 0;
+        self.lyricsNeedCenter = YES;
+        [self update];
+        self.lyricsNeedCenter = YES;
+        [self centerLyrics:NO];
+    });
 }
 - (void)dragStart { self.dragging = YES; }
 - (void)dragProgress { self.elapsed.text = MCTimeString(self.slider.value); }
@@ -522,7 +535,7 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
     return cell;
 }
 - (void)tableView:(UITableView *)t didSelectRowAtIndexPath:(NSIndexPath *)path {
-    [t deselectRowAtIndexPath:path animated:YES];
+    [t deselectRowAtIndexPath:path animated:MCMotionEnabled()];
     if (path.row >= (NSInteger)self.lines.count) return;
     [t setContentOffset:t.contentOffset animated:NO];
     self.lyricsResumeAfter = 0;
