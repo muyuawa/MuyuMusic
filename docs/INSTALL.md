@@ -1,6 +1,6 @@
 # iOS 6 分支安装与测试
 
-本地测试包：`dist/MuyuMusic-1.3.1-ios6-armv7.ipa`，版本 1.3.1 / 构建 17，最低 iOS 6.0、ARMv7。本分支尚未发布到 GitHub，原版 Releases 不包含此测试包。
+版本 1.3.1 / 构建 17，最低 iOS 6.0、ARMv7。[GitHub Release](https://github.com/muyuawa/MuyuMusic/releases/tag/v1.3.1-ios6-build17) 提供 `MuyuMusic-1.3.1-ios6-build17-armv7.ipa`、源码与 SHA-256 校验文件；本地构建包为 `dist/MuyuMusic-1.3.1-ios6-armv7.ipa`。
 
 IPA 使用 ad-hoc 签名（主 SHA-1 和附加 SHA-256）。设备须已越狱，并具备适用于当前固件的 unsigned/ad-hoc IPA 安装支持。本次按用户要求，已覆盖安装到连接的 iPod4,1 / iOS 7.1.2，并回读确认构建 17；没有安装或更改越狱工具。iOS 6 真机验收仍待进行。
 
@@ -8,10 +8,10 @@ IPA 使用 ad-hoc 签名（主 SHA-1 和附加 SHA-256）。设备须已越狱�
 
 1. 确认设备为 iOS 6.0+ 的 ARMv7 设备，系统日期正确，存储空间充足。
 2. 先备份应用的 Documents、歌单和设置。沿用设备现有、适用于该系统版本的 IPA 安装器。
-3. 把本地 `MuyuMusic-1.3.1-ios6-armv7.ipa` 传入设备并安装。若设备已有可用的 `appinst`，可执行：
+3. 把下载的 IPA 传入设备并安装。若设备已有可用的 `appinst`，可执行（本地构建包请替换文件名）：
 
    ```sh
-   appinst /var/mobile/Media/MuyuMusic-1.3.1-ios6-armv7.ipa
+   appinst /var/mobile/Media/MuyuMusic-1.3.1-ios6-build17-armv7.ipa
    ```
 
 4. 应用标识仍为 `com.muyu.cloudmusic`，会覆盖同标识旧版本；本地曲库和原音源配置按原目录读取。需要回退时使用此前保留的原版 IPA，数据恢复以备份为准。

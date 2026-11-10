@@ -4,11 +4,11 @@
 
 版本 **1.3.1（构建 17，iOS 6）** 保留自定义音源、pdone 仓库订阅、加速下载、洛雪脚本、HTTPS 开关和错误详情。应用内界面统一扁平样式，包含搜索、分类、底部导航、开关、列表操作和弹窗。扫码登录使用本地 C 二维码库。iOS 6 的在线 MP3/AAC/M4A 等系统解码格式先下载完整再播放；FLAC 继续增量解码，iOS 7 的原有渐进式加载仍保留。
 
-本分支仅本地交付测试，未推送 GitHub。编译及主机测试不能代替 iOS 6 真机验收，详见 [兼容说明](docs/COMPATIBILITY.md) 和 [分支记录](docs/releases/1.3.1-ios6.md)。
+最新版安装包、源码与 SHA-256 校验文件见 [GitHub Release：构建 17](https://github.com/muyuawa/MuyuMusic/releases/tag/v1.3.1-ios6-build17)，新增功能见 [更新日志](docs/releases/1.3.1-ios6-build17.md)。编译及主机测试不能代替 iOS 6 真机验收，详见 [兼容说明](docs/COMPATIBILITY.md) 和 [分支记录](docs/releases/1.3.1-ios6.md)。
 
 ## 使用
 
-1. 使用本地构建的 `dist/MuyuMusic-1.3.1-ios6-armv7.ipa`，按 [安装说明](docs/INSTALL.md) 安装。
+1. 从 [GitHub Release](https://github.com/muyuawa/MuyuMusic/releases/tag/v1.3.1-ios6-build17) 下载 `MuyuMusic-1.3.1-ios6-build17-armv7.ipa`，或使用本地构建的 `dist/MuyuMusic-1.3.1-ios6-armv7.ipa`，按 [安装说明](docs/INSTALL.md) 安装。
 2. 在音乐库 → 账号与扫码登录，使用另一部手机的网易云音乐扫码并确认。登录前也可搜索和浏览公共内容；实际播放由平台权限决定。
 3. 发现页浏览推荐歌单或登录后查看每日推荐；搜索支持歌曲、歌手、专辑与歌单。歌曲右侧按钮可加入队列、收藏、添加本地歌单、修改网易云喜欢状态或浏览歌手/专辑。
 4. 用 iTunes 文件共享向“暮雨音乐”添加 MP3、AAC/M4A、ALAC、FLAC、WAV、AIFF。可以添加子目录；同名 `.lrc` 与音乐放在一起。回到应用自动扫描，也可手动扫描。
