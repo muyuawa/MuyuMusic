@@ -1,8 +1,8 @@
 # iOS 6 分支安装与测试
 
-版本 1.3.1 / 构建 17，最低 iOS 6.0、ARMv7。[GitHub Release](https://github.com/muyuawa/MuyuMusic/releases/tag/v1.3.1-ios6-build17) 提供 `MuyuMusic-1.3.1-ios6-build17-armv7.ipa`、源码与 SHA-256 校验文件；本地构建包为 `dist/MuyuMusic-1.3.1-ios6-armv7.ipa`。
+当前本地修复包为版本 1.3.1 / 构建 18，最低 iOS 6.0、ARMv7，位于 `dist/MuyuMusic-1.3.1-ios6-armv7.ipa`。公开的构建 17 安装包、源码和 SHA-256 校验文件仍可从 [GitHub Release](https://github.com/muyuawa/MuyuMusic/releases/tag/v1.3.1-ios6-build17) 下载。
 
-IPA 使用 ad-hoc 签名（主 SHA-1 和附加 SHA-256）。设备须已越狱，并具备适用于当前固件的 unsigned/ad-hoc IPA 安装支持。本次按用户要求，已覆盖安装到连接的 iPod4,1 / iOS 7.1.2，并回读确认构建 17；没有安装或更改越狱工具。iOS 6 真机验收仍待进行。
+IPA 使用 ad-hoc 签名（主 SHA-1 和附加 SHA-256）。设备须已越狱，并具备适用于当前固件的 unsigned/ad-hoc IPA 安装支持。构建 18 已覆盖安装到连接的 iPod4,1 / iOS 6.1.6，USB 传输、安装和查询均返回 0，设备回读为 `1.3.1 / 18`。使用生产音源代码检查六种真实格式的旧 `.audio` 文件：MP3、M4A、AAC、WAV、AIFF 均可被 AVFoundation 加载，FLAC 正确选择专用解码路径。原先报错的在线歌曲及完整播放体验仍需在应用中复测。
 
 ## 安装
 

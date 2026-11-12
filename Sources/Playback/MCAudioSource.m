@@ -4,6 +4,7 @@
 #import "../Network/MCSourceSecurity.h"
 #include <errno.h>
 #include <string.h>
+#include <unistd.h>
 
 NSString *const MCPlaybackErrorDomain = @"MCPlayback";
 NSString *const MCPlaybackRetryableKey = @"MCPlaybackRetryable";
@@ -18,18 +19,20 @@ NSError *MCPlaybackError(MCPlaybackErrorCode code, NSString *description, BOOL r
 @interface MCAudioSource () {
     MCPlaybackSpool *_spool;
     NSURL *_url;
-    NSString *_localPath, *_format, *_contentType;
+    NSString *_localPath, *_format, *_contentType, *_formatExtension, *_playbackAlias;
     MCRequest *_request;
     uint64_t _expected;
     NSUInteger _redirects, _requestGeneration;
     BOOL _customSource;
-    BOOL _cancelled, _announced, _flac, _started;
+    BOOL _cancelled, _announced, _started;
 }
 @end
 @implementation MCAudioSource
 - (id)initWithLocalPath:(NSString *)path {
-    if ((self = [super init]))
+    if ((self = [super init])) {
         _localPath = [path copy];
+        _format = path.pathExtension.lowercaseString;
+    }
     return self;
 }
 - (id)initWithURL:(NSURL *)url expectedLength:(uint64_t)length format:(NSString *)format {
@@ -50,12 +53,16 @@ NSError *MCPlaybackError(MCPlaybackErrorCode code, NSString *description, BOOL r
     return self;
 }
 - (void)dealloc {
+    if (_playbackAlias)
+        unlink(_playbackAlias.fileSystemRepresentation);
     mc_spool_destroy(_spool);
 }
 - (MCPlaybackSpool *)spool {
     return _spool;
 }
 - (NSString *)path {
+    if (_playbackAlias)
+        return _playbackAlias;
     const char *path = mc_spool_path(_spool);
     return path ? [NSString stringWithUTF8String:path] : nil;
 }
@@ -65,38 +72,82 @@ NSError *MCPlaybackError(MCPlaybackErrorCode code, NSString *description, BOOL r
 - (uint64_t)contentLength {
     return mc_spool_expected_length(_spool);
 }
-- (BOOL)identifyNative {
-    if (mc_spool_available(_spool) < 12)
+/* Actual container/frame bytes win over URL suffixes and service hints. */
+- (BOOL)identifyFormat {
+    if (_formatExtension)
+        return YES;
+    if (mc_spool_available(_spool) < 4)
         return NO;
-    unsigned char bytes[12];
+    unsigned char bytes[12] = {0};
     uint64_t offset = 0;
-    if (mc_spool_read_timed(_spool, bytes, sizeof bytes, &offset, mc_spool_revision(_spool), 0) !=
-        sizeof bytes)
+    ssize_t count = mc_spool_read_timed(_spool, bytes, sizeof bytes, &offset,
+                                        mc_spool_revision(_spool), 0);
+    if (count < 4)
         return NO;
-    if (!memcmp(bytes + 4, "ftyp", 4))
-        _contentType = @"com.apple.m4a-audio";
-    else if (!memcmp(bytes, "RIFF", 4) && !memcmp(bytes + 8, "WAVE", 4))
-        _contentType = @"com.microsoft.waveform-audio";
-    else if (!memcmp(bytes, "FORM", 4) && (!memcmp(bytes + 8, "AIFF", 4) || !memcmp(bytes + 8, "AIFC", 4)))
-        _contentType = @"public.aiff-audio";
+    /* ID3 tags may precede FLAC or AAC as well as MP3. Skip their bounded
+       synchsafe size before deciding which decoder owns the payload. */
+    if (!memcmp(bytes, "ID3", 3)) {
+        if (count < 10)
+            return NO;
+        if (bytes[3] >= 2 && bytes[3] <= 4 &&
+            !((bytes[6] | bytes[7] | bytes[8] | bytes[9]) & 0x80)) {
+            offset = 10 + ((uint64_t)bytes[6] << 21) + ((uint64_t)bytes[7] << 14) +
+                     ((uint64_t)bytes[8] << 7) + bytes[9];
+            if (bytes[3] == 4 && (bytes[5] & 0x10))
+                offset += 10;
+            if (mc_spool_available(_spool) < offset + 4)
+                return NO;
+            count = mc_spool_read_timed(_spool, bytes, sizeof bytes, &offset,
+                                        mc_spool_revision(_spool), 0);
+            if (count < 4)
+                return NO;
+        }
+    }
+    NSString *extension = nil;
+    if (!memcmp(bytes, "fLaC", 4))
+        extension = @"flac";
+    else if (count >= 12 && !memcmp(bytes + 4, "ftyp", 4))
+        extension = @"m4a";
+    else if (count >= 12 && !memcmp(bytes, "RIFF", 4) && !memcmp(bytes + 8, "WAVE", 4))
+        extension = @"wav";
+    else if (count >= 12 && !memcmp(bytes, "FORM", 4) &&
+             (!memcmp(bytes + 8, "AIFF", 4) || !memcmp(bytes + 8, "AIFC", 4)))
+        extension = @"aiff";
     else if (bytes[0] == 0xff && (bytes[1] & 0xf6) == 0xf0)
-        _contentType = @"public.aac-audio";
-    else if (!memcmp(bytes, "ID3", 3) || (bytes[0] == 0xff && (bytes[1] & 0xe0) == 0xe0))
-        _contentType = @"public.mp3";
-    else if ([_format isEqualToString:@"m4a"] || [_format isEqualToString:@"alac"])
-        _contentType = @"com.apple.m4a-audio";
-    else if ([_format isEqualToString:@"aac"])
-        _contentType = @"public.aac-audio";
-    else
+        extension = @"aac";
+    else if (bytes[0] == 0xff && (bytes[1] & 0xe0) == 0xe0)
+        extension = @"mp3";
+    else if (mc_spool_complete(_spool))
+        extension = [_format isEqual:@"alac"] ? @"m4a" : ([_format isEqual:@"aif"] ? @"aiff" : _format);
+    NSDictionary *types = @{@"mp3":@"public.mp3", @"flac":@"org.xiph.flac",
+                            @"m4a":@"com.apple.m4a-audio", @"aac":@"public.aac-audio",
+                            @"wav":@"com.microsoft.waveform-audio", @"aiff":@"public.aiff-audio"};
+    NSString *type = extension ? types[extension] : nil;
+    if (!type)
         return NO;
+    _formatExtension = extension;
+    _contentType = type;
     return YES;
 }
 - (void)announce:(BOOL)flac {
     @synchronized(self) {
         if (_cancelled || _announced)
             return;
+        /* iOS 6 AVURLAsset needs a recognized suffix, including cache hits.
+           A hard link keeps the original cache/spool and avoids copying audio. */
+        NSString *original = [self path];
+        if (_formatExtension && ![original.pathExtension.lowercaseString isEqual:_formatExtension]) {
+            NSString *name = [[@"muyu-playback-" stringByAppendingString:[[NSUUID UUID] UUIDString]]
+                stringByAppendingPathExtension:_formatExtension];
+            NSString *alias = [NSTemporaryDirectory() stringByAppendingPathComponent:name];
+            if (link(original.fileSystemRepresentation, alias.fileSystemRepresentation)) {
+                [self fail:MCPlaybackError(MCPlaybackDiskError,
+                    @"无法准备音频播放文件，请检查剩余存储空间后重试。", NO)];
+                return;
+            }
+            _playbackAlias = alias;
+        }
         _announced = YES;
-        _flac = flac;
     }
     dispatch_async(dispatch_get_main_queue(), ^{
         @synchronized(self) {
@@ -149,17 +200,12 @@ NSError *MCPlaybackError(MCPlaybackErrorCode code, NSString *description, BOOL r
                                                NO)];
                     return;
                 }
-                char magic[4] = {0};
-                uint64_t offset = 0;
-                ssize_t n = mc_spool_read(self->_spool, magic, sizeof magic, &offset,
-                                          mc_spool_revision(self->_spool));
-                BOOL flac = n == 4 && !memcmp(magic, "fLaC", 4);
-                flac = flac || [[[self->_localPath pathExtension] lowercaseString] isEqualToString:@"flac"];
-                if (n <= 0)
+                [self identifyFormat];
+                if (!mc_spool_available(self->_spool))
                     [self fail:MCPlaybackError(MCPlaybackFileError,
                                                @"This audio file is empty or unreadable.", NO)];
                 else
-                    [self announce:flac];
+                    [self announce:[self->_formatExtension isEqual:@"flac"]];
             }
         });
     } else {
@@ -240,15 +286,10 @@ NSError *MCPlaybackError(MCPlaybackErrorCode code, NSString *description, BOOL r
             return NO;
         if (mc_spool_append(self->_spool, bytes, length))
             return NO;
-        if (!self->_announced && mc_spool_available(self->_spool) >= 4) {
-            char magic[4];
-            uint64_t offset = 0;
-            if (mc_spool_read(self->_spool, magic, sizeof magic, &offset, mc_spool_revision(self->_spool)) ==
-                    4 &&
-                (!memcmp(magic, "fLaC", 4) || [self->_format isEqualToString:@"flac"]))
-                [self announce:YES];
-            else if (self.allowsProgressiveNativePlayback && self.contentLength && [self identifyNative])
-                [self announce:NO];
+        if (!self->_announced && [self identifyFormat]) {
+            BOOL flac = [self->_formatExtension isEqual:@"flac"];
+            if (flac || (self.allowsProgressiveNativePlayback && self.contentLength))
+                [self announce:flac];
         }
         return YES;
     };
@@ -283,6 +324,12 @@ NSError *MCPlaybackError(MCPlaybackErrorCode code, NSString *description, BOOL r
         if (failure)
             [self fail:failure];
         else {
+            if (!self->_announced) {
+                [self identifyFormat];
+                [self announce:[self->_formatExtension isEqual:@"flac"]];
+            }
+            if (!self->_announced)
+                return;
             dispatch_async(dispatch_get_main_queue(), ^{
                 @synchronized(self) {
                     if (self->_cancelled)
@@ -291,10 +338,6 @@ NSError *MCPlaybackError(MCPlaybackErrorCode code, NSString *description, BOOL r
                 if (self.downloadCompleted)
                     self.downloadCompleted(self.path);
             });
-            if (!self->_announced) {
-                [self identifyNative];
-                [self announce:[self->_format isEqualToString:@"flac"]];
-            }
         }
     };
     NSDictionary *headers =

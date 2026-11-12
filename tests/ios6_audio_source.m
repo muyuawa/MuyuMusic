@@ -59,7 +59,8 @@ static void Case(BOOL streaming, BOOL flac, BOOL truncate, BOOL cancel) {
     };
     [source start];
     unsigned char bytes[12] = {0};
-    memcpy(bytes, flac ? "fLaC" : "ID3", flac ? 4 : 3);
+    if (flac) memcpy(bytes, "fLaC", 4);
+    else { bytes[0]=0xff; bytes[1]=0xfb; bytes[2]=0x90; }
     assert(deliver(bytes, sizeof bytes));
     Drain();
     assert(ready == (unsigned)(streaming || flac));
@@ -82,8 +83,69 @@ static void Case(BOOL streaming, BOOL flac, BOOL truncate, BOOL cancel) {
     deliver = nil;
     finish = nil;
 }
+
+/* Catches extensionless/.audio playback paths and decoder selection from stale hints. */
+static void FormatCase(const unsigned char *bytes, NSString *hint, NSString *extension,
+                       NSString *type, BOOL flac, BOOL local) {
+    NSString *input = nil, *playback = nil;
+    @autoreleasepool {
+        NSData *payload = [NSData dataWithBytes:bytes length:24];
+        MCAudioSource *source;
+        if (local) {
+            input = [NSTemporaryDirectory() stringByAppendingPathComponent:
+                [[[NSUUID UUID] UUIDString] stringByAppendingPathExtension:@"audio"]];
+            assert([payload writeToFile:input atomically:YES]);
+            source = [[MCAudioSource alloc] initWithLocalPath:input];
+        } else {
+            source = [[MCAudioSource alloc] initWithURL:[NSURL URLWithString:@"https://m7.music.126.net/test"]
+                                        expectedLength:24 format:hint];
+            source.allowsProgressiveNativePlayback = NO;
+        }
+        __block unsigned ready = 0, failed = 0;
+        source.ready = ^(BOOL actualFLAC) { assert(actualFLAC == flac); ready++; };
+        source.failure = ^(NSError *error) { (void)error; failed++; };
+        [source start];
+        if (!local) { assert(deliver(bytes, 24)); finish(nil); }
+        Drain();
+        assert(ready == 1 && failed == 0);
+        playback = source.path;
+        assert([playback.pathExtension isEqual:extension]);
+        assert([source.contentType isEqual:type]);
+        assert([[NSData dataWithContentsOfFile:playback] isEqual:payload]);
+        [source cancel];
+        source = nil;
+        Drain();
+        deliver = nil; finish = nil;
+    }
+    assert(![[NSFileManager defaultManager] fileExistsAtPath:playback]);
+    if (local) {
+        assert([[NSFileManager defaultManager] fileExistsAtPath:input]);
+        [[NSFileManager defaultManager] removeItemAtPath:input error:NULL];
+    }
+}
+static void FormatPaths(void) {
+    unsigned char mp3[24] = {0xff,0xfb,0x90,0}, flac[24] = {'f','L','a','C'};
+    unsigned char taggedFLAC[24] = {'I','D','3',3,0,0,0,0,0,0,'f','L','a','C'};
+    unsigned char taggedAAC[24] = {'I','D','3',4,0,0,0,0,0,0,0xff,0xf1,0x50,0x80};
+    unsigned char m4a[24] = {0,0,0,24,'f','t','y','p','M','4','A',' '};
+    unsigned char aac[24] = {0xff,0xf1,0x50,0x80}, wav[24] = {'R','I','F','F',0,0,0,0,'W','A','V','E'};
+    unsigned char aiff[24] = {'F','O','R','M',0,0,0,0,'A','I','F','F'};
+    FormatCase(mp3, @"flac", @"mp3", @"public.mp3", NO, NO);
+    FormatCase(flac, @"mp3", @"flac", @"org.xiph.flac", YES, NO);
+    FormatCase(mp3, nil, @"mp3", @"public.mp3", NO, YES);
+    FormatCase(flac, nil, @"flac", @"org.xiph.flac", YES, YES);
+    FormatCase(taggedFLAC, nil, @"flac", @"org.xiph.flac", YES, YES);
+    FormatCase(taggedAAC, nil, @"aac", @"public.aac-audio", NO, YES);
+    FormatCase(m4a, nil, @"m4a", @"com.apple.m4a-audio", NO, YES);
+    FormatCase(aac, nil, @"aac", @"public.aac-audio", NO, YES);
+    FormatCase(wav, nil, @"wav", @"com.microsoft.waveform-audio", NO, YES);
+    FormatCase(aiff, nil, @"aiff", @"public.aiff-audio", NO, YES);
+    puts("audio formats: typed paths, header priority, legacy caches and alias cleanup passed");
+}
+
 int main(void) {
     @autoreleasepool {
+        FormatPaths();
         Case(NO, NO, NO, NO);
         Case(YES, NO, NO, NO);
         Case(NO, YES, NO, NO);

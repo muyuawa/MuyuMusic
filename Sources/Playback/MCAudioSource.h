@@ -19,6 +19,8 @@ NSError *MCPlaybackError(MCPlaybackErrorCode code, NSString *description, BOOL r
    The spool may be read on the decoder worker while the transport appends it. */
 @interface MCAudioSource : NSObject
 @property (nonatomic, readonly) MCPlaybackSpool *spool;
+/* A source-owned, correctly suffixed hard link when the underlying spool or
+   legacy cache has no recognized suffix. Its lifetime matches this source. */
 @property (nonatomic, readonly) NSString *path;
 @property (nonatomic, readonly) NSString *contentType;
 @property (nonatomic, readonly) uint64_t contentLength;
