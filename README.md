@@ -4,9 +4,9 @@
 
 版本 **1.3.1（构建 18，iOS 6）** 保留自定义音源、pdone 仓库订阅、加速下载、洛雪脚本、HTTPS 开关和错误详情。应用内界面统一扁平样式，包含搜索、分类、底部导航、开关、列表操作和弹窗。扫码登录使用本地 C 二维码库。iOS 6 的在线 MP3/AAC/M4A 等系统解码格式先下载完整再播放；FLAC 继续增量解码，iOS 7 的原有渐进式加载仍保留。
 
-公开发布的安装包、源码与 SHA-256 校验文件见 [GitHub Release：构建 17](https://github.com/muyuawa/MuyuMusic/releases/tag/v1.3.1-ios6-build17)，新增功能见 [更新日志](docs/releases/1.3.1-ios6-build17.md)。编译及主机测试不能代替 iOS 6 真机验收，详见 [兼容说明](docs/COMPATIBILITY.md) 和 [分支记录](docs/releases/1.3.1-ios6.md)。
+最新版安装包、源码与 SHA-256 校验文件见 [GitHub Release：构建 18](https://github.com/muyuawa/MuyuMusic/releases/tag/v1.3.1-ios6-build18)，功能与下载说明见 [更新日志](docs/releases/1.3.1-ios6-build18.md)。编译及主机测试不能代替完整真机验收，详见 [兼容说明](docs/COMPATIBILITY.md) 和 [分支记录](docs/releases/1.3.1-ios6.md)。
 
-本地构建 18 修正 iOS 6 音频格式识别：按实际文件头区分 MP3、FLAC、M4A/ALAC、AAC、WAV 和 AIFF，为播放路径提供对应后缀；兼容已有 `.audio` 缓存。
+构建 18 修正 iOS 6 音频格式识别：按实际文件头区分 MP3、FLAC、M4A/ALAC、AAC、WAV 和 AIFF，为播放路径提供对应后缀；兼容已有 `.audio` 缓存。已覆盖安装到 iPod4,1 / iOS 6.1.6，并通过针对性的旧缓存格式检查。
 
 ## 使用
 
