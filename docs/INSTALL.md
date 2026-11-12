@@ -1,8 +1,8 @@
 # iOS 6 分支安装与测试
 
-版本 1.3.1 / 构建 18，最低 iOS 6.0、ARMv7。[GitHub Release](https://github.com/muyuawa/MuyuMusic/releases/tag/v1.3.1-ios6-build18) 提供 `MuyuMusic-1.3.1-ios6-build18-armv7.ipa`、源码包和 SHA-256 校验文件；本地构建包为 `dist/MuyuMusic-1.3.1-ios6-armv7.ipa`。
+版本 1.3.2 / 构建 18，最低 iOS 6.0、ARMv7。[GitHub Release](https://github.com/muyuawa/MuyuMusic/releases/tag/v1.3.2-ios6-build18) 提供 `MuyuMusic-1.3.2-ios6-build18-armv7.ipa`、源码包和 SHA-256 校验文件；本地构建包为 `dist/MuyuMusic-1.3.2-ios6-armv7.ipa`。
 
-IPA 使用 ad-hoc 签名（主 SHA-1 和附加 SHA-256）。设备须已越狱，并具备适用于当前固件的 unsigned/ad-hoc IPA 安装支持。构建 18 已覆盖安装到连接的 iPod4,1 / iOS 6.1.6，USB 传输、安装和查询均返回 0，设备回读为 `1.3.1 / 18`。使用生产音源代码检查六种真实格式的旧 `.audio` 文件：MP3、M4A、AAC、WAV、AIFF 均可被 AVFoundation 加载，FLAC 正确选择专用解码路径。原先报错的在线歌曲及完整播放体验仍需在应用中复测。
+IPA 使用 ad-hoc 签名（主 SHA-1 和附加 SHA-256）。设备须已越狱，并具备适用于当前固件的 unsigned/ad-hoc IPA 安装支持。1.3.2 沿用构建 18 的播放代码；此前构建 18 已覆盖安装到连接的 iPod4,1 / iOS 6.1.6，USB 传输、安装和查询均返回 0，设备回读为 `1.3.1 / 18`。使用生产音源代码检查六种真实格式的旧 `.audio` 文件：MP3、M4A、AAC、WAV、AIFF 均可被 AVFoundation 加载，FLAC 正确选择专用解码路径。原先报错的在线歌曲及完整播放体验仍需在应用中复测。
 
 ## 安装
 
@@ -11,7 +11,7 @@ IPA 使用 ad-hoc 签名（主 SHA-1 和附加 SHA-256）。设备须已越狱�
 3. 把下载的 IPA 传入设备并安装。若设备已有可用的 `appinst`，可执行（本地构建包请替换文件名）：
 
    ```sh
-   appinst /var/mobile/Media/MuyuMusic-1.3.1-ios6-build18-armv7.ipa
+   appinst /var/mobile/Media/MuyuMusic-1.3.2-ios6-build18-armv7.ipa
    ```
 
 4. 应用标识仍为 `com.muyu.cloudmusic`，会覆盖同标识旧版本；本地曲库和原音源配置按原目录读取。需要回退时使用此前保留的原版 IPA，数据恢复以备份为准。
@@ -24,7 +24,7 @@ IPA 使用 ad-hoc 签名（主 SHA-1 和附加 SHA-256）。设备须已越狱�
 - 洛雪脚本导入、自定义 API、仓库刷新/导入/同步和加速下载。
 - 暂停/继续、定位、切歌、耳机与后台音频；网络错误详情和 HTTPS 开关。
 
-iOS 6 上 MP3/AAC/M4A 的首次起播等待时间取决于整首下载速度。FLAC 的流式路径保持原实现；两者仍受网络、设备性能及第三方服务状态影响。主机测试及构建证据见 [分支记录](releases/1.3.1-ios6.md)。
+iOS 6 上 MP3/AAC/M4A 的首次起播等待时间取决于整首下载速度。FLAC 的流式路径保持原实现；两者仍受网络、设备性能及第三方服务状态影响。主机测试及构建证据见 [分支记录](releases/1.3.2-ios6.md)。
 
 
 构建 15 的 USB 安装首次遇到 `kAMDSendMessageError`，重新建立会话后安装返回 0，应用列表回读为 `1.3.1 / 15`。请重点复测：打开歌单页面后点底部正在播放，队列按钮仍可见；点击三个点进入歌曲菜单；托盘进度与三个播放按钮、托盘滑动切歌、播放页滑动切换封面/歌词；网易云歌单加入和推荐歌单收藏；设置使用协议及音源免责声明。
