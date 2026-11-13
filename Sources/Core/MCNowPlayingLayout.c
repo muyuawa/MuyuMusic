@@ -4,6 +4,10 @@
 static MCPlayerRect rect(double x, double y, double w, double h) {
     return (MCPlayerRect){x, y, w, h};
 }
+MCPlayerRect MCMiniPlayerMakeFrame(double width, double height, double tabBarTop, bool tabBarHidden) {
+    double bottom = tabBarHidden ? height : fmin(height, tabBarTop);
+    return rect(0, bottom - 52, width, 52);
+}
 MCNowPlayingLayout MCNowPlayingMakeLayout(double width, double height) {
     MCNowPlayingLayout l = {0};
     double footer = height - 134;

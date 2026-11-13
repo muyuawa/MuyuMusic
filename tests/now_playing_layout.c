@@ -51,6 +51,17 @@ static void checkScreen(double width, double screenHeight) {
     }
 }
 int main(void) {
+    /* The tab bar can retain its old frame after Now Playing hides it.
+       Browsing artists/albums above that controller must reach the bottom. */
+    MCPlayerRect mini = MCMiniPlayerMakeFrame(320, 460, 411, true);
+    assert(mini.y + mini.height == 460);
+    assert(mini.x == 0 && mini.width == 320 && mini.height == 52);
+    mini = MCMiniPlayerMakeFrame(320, 460, 411, false);
+    assert(mini.y + mini.height == 411); /* tabs restored on return */
+    mini = MCMiniPlayerMakeFrame(320, 460, 460, true);
+    assert(mini.y + mini.height == 460); /* offscreen tab bar */
+    mini = MCMiniPlayerMakeFrame(320, 548, 499, true);
+    assert(mini.y + mini.height == 548);
     checkScreen(320, 480);
     checkScreen(320, 460); /* transient taller status bar */
     checkScreen(320, 568);

@@ -99,13 +99,23 @@ static void FormatCase(const unsigned char *bytes, NSString *hint, NSString *ext
         } else {
             source = [[MCAudioSource alloc] initWithURL:[NSURL URLWithString:@"https://m7.music.126.net/test"]
                                         expectedLength:24 format:hint];
-            source.allowsProgressiveNativePlayback = NO;
+            source.allowsProgressiveNativePlayback = YES; /* iOS 7+ path */
         }
         __block unsigned ready = 0, failed = 0;
         source.ready = ^(BOOL actualFLAC) { assert(actualFLAC == flac); ready++; };
         source.failure = ^(NSError *error) { (void)error; failed++; };
         [source start];
-        if (!local) { assert(deliver(bytes, 24)); finish(nil); }
+        if (!local) {
+            assert(deliver(bytes, 12));
+            Drain();
+            assert(ready == 1 && failed == 0);
+            assert(!mc_spool_complete(source.spool));
+            assert([source.path.pathExtension isEqual:extension]);
+            assert([source.contentType isEqual:type]);
+            assert([[NSData dataWithContentsOfFile:source.path] length] == 12);
+            assert(deliver(bytes + 12, 12));
+            finish(nil);
+        }
         Drain();
         assert(ready == 1 && failed == 0);
         playback = source.path;
@@ -132,6 +142,10 @@ static void FormatPaths(void) {
     unsigned char aiff[24] = {'F','O','R','M',0,0,0,0,'A','I','F','F'};
     FormatCase(mp3, @"flac", @"mp3", @"public.mp3", NO, NO);
     FormatCase(flac, @"mp3", @"flac", @"org.xiph.flac", YES, NO);
+    FormatCase(m4a, @"alac", @"m4a", @"com.apple.m4a-audio", NO, NO);
+    FormatCase(aac, @"aac", @"aac", @"public.aac-audio", NO, NO);
+    FormatCase(wav, @"wav", @"wav", @"com.microsoft.waveform-audio", NO, NO);
+    FormatCase(aiff, @"aiff", @"aiff", @"public.aiff-audio", NO, NO);
     FormatCase(mp3, nil, @"mp3", @"public.mp3", NO, YES);
     FormatCase(flac, nil, @"flac", @"org.xiph.flac", YES, YES);
     FormatCase(taggedFLAC, nil, @"flac", @"org.xiph.flac", YES, YES);
@@ -140,7 +154,7 @@ static void FormatPaths(void) {
     FormatCase(aac, nil, @"aac", @"public.aac-audio", NO, YES);
     FormatCase(wav, nil, @"wav", @"com.microsoft.waveform-audio", NO, YES);
     FormatCase(aiff, nil, @"aiff", @"public.aiff-audio", NO, YES);
-    puts("audio formats: typed paths, header priority, legacy caches and alias cleanup passed");
+    puts("audio formats: iOS 7+ progressive readiness, typed paths, legacy caches and alias cleanup passed");
 }
 
 int main(void) {

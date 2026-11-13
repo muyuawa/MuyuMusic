@@ -11,6 +11,8 @@ typedef struct {
 
 /* Coordinates are relative to the visible area below the navigation bar. */
 MCNowPlayingLayout MCNowPlayingMakeLayout(double width, double height);
+/* Root-view coordinates; a hidden tab bar may still have its visible frame. */
+MCPlayerRect MCMiniPlayerMakeFrame(double width, double height, double tabBarTop, bool tabBarHidden);
 double MCLyricCenterInset(double height, double rowHeight);
 double MCLyricCenterOffset(unsigned row, double height, double rowHeight);
 bool MCLyricCanFollow(double now, double resumeAfter, bool dragging, bool decelerating);

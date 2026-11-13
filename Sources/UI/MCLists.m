@@ -952,6 +952,7 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
         viewController.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithCustomView:back];
     }
     [[MCTheme sharedTheme] applyToNavigationBar:navigationController.navigationBar];
+    [navigationController.tabBarController.view setNeedsLayout];
 }
 - (void)navigationController:(UINavigationController *)navigationController
     didShowViewController:(UIViewController *)viewController animated:(BOOL)animated {
@@ -960,6 +961,7 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
     self.outgoingLeftView = nil;
     self.shownController = viewController;
     navigationController.navigationBar.userInteractionEnabled = YES;
+    [navigationController.tabBarController.view setNeedsLayout];
 }
 - (void)flatBack { [self popViewControllerAnimated:YES]; }
 - (UIStatusBarStyle)preferredStatusBarStyle {
@@ -1106,8 +1108,18 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
 }
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
-    CGFloat w = self.view.bounds.size.width, y = self.tabBar.frame.origin.y - 52;
-    self.miniTray.frame = CGRectMake(0, y, w, 52);
+    BOOL tabBarHidden = self.tabBar.hidden;
+    if ([self.selectedViewController isKindOfClass:[UINavigationController class]]) {
+        // A catalog pushed above Now Playing inherits its hidden bottom bar.
+        // Legacy UIKit may retain the tab bar's old onscreen frame.
+        UINavigationController *nav = (UINavigationController *)self.selectedViewController;
+        for (UIViewController *controller in nav.viewControllers)
+            tabBarHidden |= controller.hidesBottomBarWhenPushed;
+    }
+    CGFloat w = self.view.bounds.size.width;
+    MCPlayerRect tray = MCMiniPlayerMakeFrame(w, self.view.bounds.size.height,
+                                            self.tabBar.frame.origin.y, tabBarHidden);
+    self.miniTray.frame = CGRectMake(tray.x, tray.y, tray.width, tray.height);
     self.miniCarousel.frame = CGRectMake(0, 2, w - 132, 50);
     CGFloat panelWidth = self.miniCarousel.bounds.size.width;
     self.mini.bounds = self.miniNextPreview.bounds = self.miniPreviousPreview.bounds = CGRectMake(0, 0, panelWidth, 50);
