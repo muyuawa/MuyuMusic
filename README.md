@@ -1,20 +1,65 @@
-# Muyu Cloud Music · 暮雨音乐
+# 暮雨音乐 · Muyu Music
 
-这是 **1.3.13 的 iOS 6 二维渐变分支 `codex/cover-multicolor-gradient`**，基于 `0c01844`，面向越狱的 iPod touch 4 等 **iOS 6.0+ / 32 位 ARMv7** 设备。应用采用 Objective-C / UIKit，直接访问网易云，无需部署 API、Node.js 或 VPS；本地曲库与主题可离线使用。
+为 **iOS 6.0+／ARMv7 越狱设备**打造的原生音乐播放器，将网易云音乐、本地曲库、同步歌词和 Material You 风格界面放在一起。
 
-已发布版本 **1.3.2（构建 19，iOS 6）** 保留自定义音源、pdone 仓库订阅、加速下载、洛雪脚本、HTTPS 开关和错误详情。应用内界面统一扁平样式，包含搜索、分类、底部导航、开关、列表操作和弹窗。扫码登录使用本地 C 二维码库。iOS 6 的在线 MP3/AAC/M4A 等系统解码格式先下载完整再播放；FLAC 继续增量解码，iOS 7 的原有渐进式加载仍保留。
+## 功能介绍
 
-当前版本为 **1.3.13 / 构建 32（已本地安装，未发布 GitHub）**：以 1.3.11 渐变版为基线，底部遮罩使用 5×3／7×3 的局部颜色节点，经过异常值抑制、感知色彩空间插值和明度协调，保留横向及纵向色彩差异；透明度独立按信息位置和局部对比度计算。小屏歌名保持 16pt 单行、末尾截断，Chip 与收藏保持原有样式和位置，0.22 秒显隐动画保留。后台一次生成 128×96 的二维遮罩，限制缓存并在切歌时取消旧任务，进度更新不重算。已安装到 iPod4,1 / iOS 6.1.6 并回读 1.3.13 / 32，实际视觉由用户验证。[实现说明](docs/COVER-MULTICOLOR-GRADIENT.md)。
+### 网易云音乐
 
-最新版安装包、源码与 SHA-256 校验文件见 [GitHub Release：1.3.2 / 构建 19](https://github.com/muyuawa/MuyuMusic/releases/tag/v1.3.2-ios6-build19)，功能与下载说明见 [更新日志](docs/releases/1.3.2-ios6-build19.md)。编译及主机测试不能代替完整真机验收，详见 [兼容说明](docs/COMPATIBILITY.md) 和 [分支记录](docs/releases/1.3.2-ios6.md)。
+- 扫码登录网易云账号，搜索歌曲、歌手、专辑和歌单。
+- 浏览每日推荐、推荐歌单和“根据你喜欢的歌曲推荐”。
+- 查看网易云喜欢的音乐，按添加时间从新到旧排列，并支持搜索歌名、歌手和专辑。
+- 浏览账号歌单，将歌曲加入自己的网易云歌单，收藏推荐歌单。
 
-构建 19 修复从播放页浏览歌手、专辑时底部播放栏下方留白：底部导航隐藏时播放栏贴底，返回后恢复到导航上方；播放逻辑沿用构建 18。
+### 本地音乐与曲库
 
-构建 18 修正 iOS 6 音频格式识别：按实际文件头区分 MP3、FLAC、M4A/ALAC、AAC、WAV 和 AIFF，为播放路径提供对应后缀；兼容已有 `.audio` 缓存。播放代码沿用已在 iPod4,1 / iOS 6.1.6 安装并通过针对性旧缓存格式检查的构建 18。
+- 通过 iTunes 文件共享导入 MP3、AAC/M4A、ALAC、FLAC、WAV、AIFF 等音频。
+- 支持子目录扫描、歌曲搜索、本地收藏、本地歌单和最近播放。
+- 识别封面与音频信息，加载与歌曲同名的本地 `.lrc` 歌词。
+
+### 播放体验
+
+- 沉浸式专辑封面，歌名、歌手、音质和收藏按钮直接显示在封面内。
+- 自适应多色渐变与深浅文字，让歌曲信息融入封面；点按封面可淡入、淡出歌曲信息。
+- 支持封面／歌词切换、点击歌词定位、播放队列、进度拖动、随机播放与循环播放。
+- 底部迷你播放器支持上一首／下一首、滑动切歌和相邻歌曲预览。
+- 显示实际音频格式、位深、采样率等音质信息，点按可查看完整参数。
+
+### 同步歌词
+
+- 支持原文、同步译文与日语罗马音，提供独立显示开关。
+- 罗马音可替换原文，缺少对应内容时保留原文。
+- 长歌词和双语歌词自动调整行高，当前歌词高亮并居中跟随。
+
+### 主题与界面
+
+- Material You 风格的卡片、按钮、分段控件与圆角播放器。
+- 支持深色模式、跟随封面配色、自定义主题色与 HEX 颜色。
+- 动画效果可随时开关，并记住选择；适配小屏 iPhone／iPod touch 与 iPad。
+
+### 音源与缓存
+
+- 支持网易云直连、自定义 API 和兼容网易云 `wy` 的洛雪音源脚本。
+- 支持音源仓库订阅、手动同步、自动检查更新和下载加速选择。
+- 提供 HTTPS 开关、错误详情、歌曲缓存上限和缓存清理。
+- FLAC 支持增量解码与预缓存，本地曲库和主题可离线使用。
+
+## 界面预览
+
+![首页与播放页](assets/screenshots/muyu-music-1.3.13-home-player.png)
+
+## 下载
+
+当前版本：**1.3.13／构建 32**。
+
+- [下载安装包（iOS 6／ARMv7）](https://github.com/muyuawa/MuyuMusic/releases/download/v1.3.13-ios6-build32/MuyuMusic-1.3.13-ios6-armv7.ipa)
+- [下载对应源码](https://github.com/muyuawa/MuyuMusic/releases/download/v1.3.13-ios6-build32/MuyuMusic-source-1.3.13-ios6.zip)
+- [SHA-256 校验文件](https://github.com/muyuawa/MuyuMusic/releases/download/v1.3.13-ios6-build32/SHA256SUMS-1.3.13-ios6.txt)
+- [查看更新日志](https://github.com/muyuawa/MuyuMusic/releases/tag/v1.3.13-ios6-build32)
 
 ## 使用
 
-1. 从 [GitHub Release](https://github.com/muyuawa/MuyuMusic/releases/tag/v1.3.2-ios6-build19) 下载 `MuyuMusic-1.3.2-ios6-build19-armv7.ipa`，或使用本地构建的 `dist/MuyuMusic-1.3.13-ios6-armv7.ipa`，按 [安装说明](docs/INSTALL.md) 安装。
+1. 从 [GitHub Release](https://github.com/muyuawa/MuyuMusic/releases/tag/v1.3.13-ios6-build32) 下载 `MuyuMusic-1.3.13-ios6-armv7.ipa`，或使用本地构建的 `dist/MuyuMusic-1.3.13-ios6-armv7.ipa`，按 [安装说明](docs/INSTALL.md) 安装。
 2. 在音乐库 → 账号与扫码登录，使用另一部手机的网易云音乐扫码并确认。登录前也可搜索和浏览公共内容；实际播放由平台权限决定。
 3. 发现页浏览推荐歌单或登录后查看每日推荐；搜索支持歌曲、歌手、专辑与歌单。歌曲右侧按钮可加入队列、收藏、添加本地歌单、修改网易云喜欢状态或浏览歌手/专辑。
 4. 用 iTunes 文件共享向“暮雨音乐”添加 MP3、AAC/M4A、ALAC、FLAC、WAV、AIFF。可以添加子目录；同名 `.lrc` 与音乐放在一起。回到应用自动扫描，也可手动扫描。
@@ -44,7 +89,7 @@ bash scripts/build.sh
 
 仓库及源码包保留程序、应用资源、原始图标素材、构建脚本、测试、许可证与必要文档。SDK、依赖缓存、构建产物、设备日志、截图和设计草稿由 `.gitignore` 排除。IPA 与校验文件通过 Releases 提供。
 
-提供 Theos `Makefile`，架构 `armv7`、SDK 7.1、最低系统 6.0。准备 `.build/deps` 后可在已配置的 Theos 环境尝试 `make package`；**本次实际执行并验证的是 `scripts/build.sh`，Theos 分支未实测**。最低版本 6.0 来自实际 Mach-O 与 Info.plist 检查；完整 iOS 6 真机验收仍待进行。
+提供 Theos `Makefile`，架构 `armv7`、SDK 7.1、最低系统 6.0。准备 `.build/deps` 后可在已配置的 Theos 环境尝试 `make package`；**本次实际执行并验证的是 `scripts/build.sh`，Theos 分支未实测**。最低系统版本为 iOS 6.0。
 
 构建脚本逐个编译全部源文件，静态链接 libFLAC/libcurl/Mbed TLS，使用 SHA-1 ad-hoc 签名，再检查 Mach-O、系统依赖、entitlements、CA、许可证、文件共享与后台音频配置。生成文件位于 `dist/`，文件名包含 `ios6`，不会覆盖原版 IPA。依赖首次切换分支时会按目标重新构建；包检查会逐个检查静态库成员的系统版本。
 
@@ -57,7 +102,7 @@ bash scripts/test.sh --tls    # 另测实际捆绑 TLS 后端和一次真实搜�
 bash tests/source_repository_live.sh ghproxy.net # 可选：真实仓库目录/加速下载/初始化，不测试音乐播放
 ```
 
-完整公共接口探测保留为可选的 `tests/network_live.sh`，默认不重复执行。本分支新增编码、二维码解码回读、音频起播时机测试；`bash tests/ios6_compile.sh` 检查全部源文件的 iOS 6 API 可用性。真机验收范围见 [分支记录](docs/releases/1.3.2-ios6.md)。
+完整公共接口探测保留为可选的 `tests/network_live.sh`，默认不重复执行。测试覆盖编码、二维码解码回读、音频起播时机、歌词、主题与页面布局；`bash tests/ios6_compile.sh` 检查全部源文件的 iOS 6 API 可用性。
 
 ## 代码导航
 
