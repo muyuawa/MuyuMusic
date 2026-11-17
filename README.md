@@ -1,10 +1,10 @@
 # Muyu Cloud Music · 暮雨音乐
 
-这是 **1.3.11 的 iOS 6 兼容分支 `codex/ios6`**，基于 `0c01844`，面向越狱的 iPod touch 4 等 **iOS 6.0+ / 32 位 ARMv7** 设备。应用采用 Objective-C / UIKit，直接访问网易云，无需部署 API、Node.js 或 VPS；本地曲库与主题可离线使用。
+这是 **1.3.13 的 iOS 6 二维渐变分支 `codex/cover-multicolor-gradient`**，基于 `0c01844`，面向越狱的 iPod touch 4 等 **iOS 6.0+ / 32 位 ARMv7** 设备。应用采用 Objective-C / UIKit，直接访问网易云，无需部署 API、Node.js 或 VPS；本地曲库与主题可离线使用。
 
 已发布版本 **1.3.2（构建 19，iOS 6）** 保留自定义音源、pdone 仓库订阅、加速下载、洛雪脚本、HTTPS 开关和错误详情。应用内界面统一扁平样式，包含搜索、分类、底部导航、开关、列表操作和弹窗。扫码登录使用本地 C 二维码库。iOS 6 的在线 MP3/AAC/M4A 等系统解码格式先下载完整再播放；FLAC 继续增量解码，iOS 7 的原有渐进式加载仍保留。
 
-当前版本为 **1.3.11 / 构建 30（已本地打包安装，尚未发布 GitHub）**：针对 iPod 截图中歌名只剩一个字和封面文字重叠的问题，歌名改用独立 UILabel 填满按钮区域，固定单行字号、末尾截断，仍可点击查看完整信息。自适应融合渐变在第一行歌名前达到保护强度，白底黑 Logo 使用更强的浅色保护，复杂插画按局部图案和对比度增强。小屏信息高度为 68pt，渐变从信息区上方柔和进入；0.22 秒显隐动画继续保留。封面尺寸、位置、封面／歌词切换、进度条和五按钮布局沿用原实现。针对性布局、对比度及 ARMv7 / iOS 6 编译和包签名检查通过。USB 回读确认 iPod4,1 / iOS 6.1.6 已安装 **1.3.11 / 30**；本版真实视觉、点按和听音由用户在设备端验证。[实现与验证记录](docs/UI-MATERIAL.md)。
+当前版本为 **1.3.13 / 构建 32（已本地安装，未发布 GitHub）**：以 1.3.11 渐变版为基线，底部遮罩使用 5×3／7×3 的局部颜色节点，经过异常值抑制、感知色彩空间插值和明度协调，保留横向及纵向色彩差异；透明度独立按信息位置和局部对比度计算。小屏歌名保持 16pt 单行、末尾截断，Chip 与收藏保持原有样式和位置，0.22 秒显隐动画保留。后台一次生成 128×96 的二维遮罩，限制缓存并在切歌时取消旧任务，进度更新不重算。已安装到 iPod4,1 / iOS 6.1.6 并回读 1.3.13 / 32，实际视觉由用户验证。[实现说明](docs/COVER-MULTICOLOR-GRADIENT.md)。
 
 最新版安装包、源码与 SHA-256 校验文件见 [GitHub Release：1.3.2 / 构建 19](https://github.com/muyuawa/MuyuMusic/releases/tag/v1.3.2-ios6-build19)，功能与下载说明见 [更新日志](docs/releases/1.3.2-ios6-build19.md)。编译及主机测试不能代替完整真机验收，详见 [兼容说明](docs/COMPATIBILITY.md) 和 [分支记录](docs/releases/1.3.2-ios6.md)。
 
@@ -14,7 +14,7 @@
 
 ## 使用
 
-1. 从 [GitHub Release](https://github.com/muyuawa/MuyuMusic/releases/tag/v1.3.2-ios6-build19) 下载 `MuyuMusic-1.3.2-ios6-build19-armv7.ipa`，或使用本地构建的 `dist/MuyuMusic-1.3.11-ios6-armv7.ipa`，按 [安装说明](docs/INSTALL.md) 安装。
+1. 从 [GitHub Release](https://github.com/muyuawa/MuyuMusic/releases/tag/v1.3.2-ios6-build19) 下载 `MuyuMusic-1.3.2-ios6-build19-armv7.ipa`，或使用本地构建的 `dist/MuyuMusic-1.3.13-ios6-armv7.ipa`，按 [安装说明](docs/INSTALL.md) 安装。
 2. 在音乐库 → 账号与扫码登录，使用另一部手机的网易云音乐扫码并确认。登录前也可搜索和浏览公共内容；实际播放由平台权限决定。
 3. 发现页浏览推荐歌单或登录后查看每日推荐；搜索支持歌曲、歌手、专辑与歌单。歌曲右侧按钮可加入队列、收藏、添加本地歌单、修改网易云喜欢状态或浏览歌手/专辑。
 4. 用 iTunes 文件共享向“暮雨音乐”添加 MP3、AAC/M4A、ALAC、FLAC、WAV、AIFF。可以添加子目录；同名 `.lrc` 与音乐放在一起。回到应用自动扫描，也可手动扫描。

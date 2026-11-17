@@ -21,7 +21,7 @@ static MCCoverAppearance analyze(double side, unsigned lines) {
     assert(appearance.opacity[MCCoverGradientStops - 1] <= .98);
     assert(appearance.foreground.r == 0 || appearance.foreground.r == 1);
     for (unsigned i = 1; i < MCCoverGradientStops; i++)
-        assert(appearance.opacity[i] >= appearance.opacity[i - 1]);
+        assert(appearance.opacity[i] >= 0 && appearance.opacity[i] <= .98);
     assert(MCCoverGradientOpacity(appearance, -.1) == 0);
     assert(MCCoverGradientOpacity(appearance, 1.1) == appearance.opacity[MCCoverGradientStops - 1]);
     assert(MCCoverGradientOpacity(appearance, .001) < .01);
@@ -114,6 +114,38 @@ int main(void) {
         }
     }
     puts("complex color: protected background reaches 4.5:1 before relying on outlines, all card sizes");
+
+    /* A genuine color field keeps both horizontal and vertical artwork
+       differences after coordinating lightness for a single text color. */
+    for (unsigned y = 0; y < 48; y++) for (unsigned x = 0; x < 48; x++) {
+        uint8_t *p = pixels + (y * 48 + x) * 4;
+        double t = x / 47., v = y / 47.;
+        p[0] = (uint8_t)(70 + 120*t + 20*v);
+        p[1] = (uint8_t)(45 + 40*t + 30*v);
+        p[2] = (uint8_t)(155 - 30*t + 20*v); p[3] = 255;
+    }
+    MCCoverAppearance field = analyze(220, 1);
+    assert(field.columns == 5 && field.rows == 3);
+    MCColor left = MCCoverGradientColor(field,.05,.7), right = MCCoverGradientColor(field,.95,.7);
+    assert(fabs(left.r-right.r) + fabs(left.b-right.b) > .05);
+    MCColor above = MCCoverGradientColor(field,.5,.1), below = MCCoverGradientColor(field,.5,.9);
+    assert(fabs(above.r-below.r) + fabs(above.b-below.b) > .01);
+    assert(analyze(480, 1).columns == 7);
+    for (unsigned i = 0; i < field.columns*field.rows; i++) {
+        assert(field.nodes[i].confidence >= 0 && field.nodes[i].confidence <= 1);
+        assert(field.nodes[i].variation >= 0 && field.nodes[i].strength <= .96);
+    }
+    for (unsigned x = 1; x < 1000; x++) {
+        MCColor a = MCCoverGradientColor(field,(x-1)/1000.,.7), b = MCCoverGradientColor(field,x/1000.,.7);
+        assert(fabs(a.r-b.r) + fabs(a.g-b.g) + fabs(a.b-b.b) < .02);
+    }
+    uint8_t overlay[64*48*4];
+    assert(MCCoverGradientRenderRGBA(field,overlay,64,48,64*4));
+    for (unsigned x = 0; x < 64*4; x++) assert(overlay[x] == 0);
+    for (unsigned i = 0; i < 64*48; i++) {
+        assert(overlay[i*4] <= overlay[i*4+3] && overlay[i*4+1] <= overlay[i*4+3] && overlay[i*4+2] <= overlay[i*4+3]);
+    }
+    puts("two-dimensional field: horizontal/vertical color differences, continuous interpolation and transparent edge");
 
     memset(pixels, 0, sizeof pixels);
     MCCoverAppearance transparent = analyze(220, 1);

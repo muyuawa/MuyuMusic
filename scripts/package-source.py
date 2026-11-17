@@ -9,7 +9,7 @@ files=subprocess.check_output(['git','ls-files','--cached','--others','--exclude
 root_files={'.clang-format','.gitignore','LICENSE','Makefile','README.md','control'}
 directories=('Sources/','Resources/','assets/','scripts/','tests/','vendor/licenses/')
 documents={'docs/'+name for name in ('COMPATIBILITY.md','CUSTOM-SOURCES.md','DEPENDENCIES.md','INSTALL.md',
-                                    'INTERFACES.md','LIBRARY.md','NETWORK.md','PLAYBACK.md','UI-MATERIAL.md')}
+                                    'INTERFACES.md','LIBRARY.md','NETWORK.md','PLAYBACK.md','UI-MATERIAL.md','COVER-MULTICOLOR-GRADIENT.md')}
 version=plistlib.loads((root/'Resources/Info.plist').read_bytes())['CFBundleShortVersionString']
 assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+',version)
 target=root/f'dist/MuyuMusic-source-{version}-ios6.zip'

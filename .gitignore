@@ -1,7 +1,9 @@
 # Local build tools, downloaded dependencies and SDKs
 /.build/
 /.deps/
+/.deps
 /vendor/archives/
+/vendor/archives
 /.theos/
 /DerivedData/
 

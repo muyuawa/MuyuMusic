@@ -15,10 +15,10 @@ static MCColor MCCoverRGB(UIColor *color) {
     [color getRed:&r green:&g blue:&b alpha:&alpha];
     return (MCColor){r, g, b};
 }
-static dispatch_queue_t MCCoverAnalysisQueue(void) {
-    static dispatch_queue_t queue;
+static NSOperationQueue *MCCoverAnalysisQueue(void) {
+    static NSOperationQueue *queue;
     static dispatch_once_t once;
-    dispatch_once(&once, ^{ queue = dispatch_queue_create("com.muyu.cover-appearance", DISPATCH_QUEUE_SERIAL); });
+    dispatch_once(&once, ^{ queue = [NSOperationQueue new]; queue.name = @"com.muyu.cover-appearance"; queue.maxConcurrentOperationCount = 1; });
     return queue;
 }
 static NSData *MCCoverPixels(UIImage *image, double aspect) {
@@ -45,19 +45,37 @@ static NSData *MCCoverPixels(UIImage *image, double aspect) {
     return [NSData dataWithBytes:pixels length:sizeof pixels];
 }
 
-@interface MCCoverAppearanceCache : NSObject
-@property (nonatomic, strong) NSCache *samples;
-@property (nonatomic, strong) NSCache *appearances;
+@interface MCCoverAppearanceResult : NSObject
+@property (nonatomic, strong) NSData *parameters;
+@property (nonatomic, strong) UIImage *overlay;
 @end
-@implementation MCCoverAppearanceCache
-- (id)init {
-    if ((self = [super init])) {
-        _samples = [NSCache new]; _samples.countLimit = 2;
-        _appearances = [NSCache new]; _appearances.countLimit = 6;
-    }
-    return self;
+@implementation MCCoverAppearanceResult
+@end
+static NSCache *MCCoverResultCache(void) {
+    static NSCache *cache; static dispatch_once_t once;
+    dispatch_once(&once, ^{ cache = [NSCache new]; cache.countLimit = 16; cache.totalCostLimit = 2 * 1024 * 1024; });
+    return cache;
 }
-@end
+static NSCache *MCCoverSampleCache(void) {
+    static NSCache *cache; static dispatch_once_t once;
+    dispatch_once(&once, ^{ cache = [NSCache new]; cache.countLimit = 16; cache.totalCostLimit = 256 * 1024; });
+    return cache;
+}
+static UIImage *MCCoverOverlayImage(MCCoverAppearance appearance) {
+    const unsigned width = 128, height = 96;
+    NSMutableData *pixels = [NSMutableData dataWithLength:width * height * 4];
+    if (!MCCoverGradientRenderRGBA(appearance, pixels.mutableBytes, width, height, width * 4)) return nil;
+    CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+    CGContextRef context = CGBitmapContextCreate(pixels.mutableBytes, width, height, 8, width * 4, space,
+        kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+    CGColorSpaceRelease(space);
+    if (!context) return nil;
+    CGImageRef image = CGBitmapContextCreateImage(context);
+    UIImage *overlay = image ? [UIImage imageWithCGImage:image] : nil;
+    if (image) CGImageRelease(image);
+    CGContextRelease(context);
+    return overlay;
+}
 
 static CGRect MCCardRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.height); }
 static CGRect MCPanelRect(MCPlayerRect r, MCPlayerRect panel) {
@@ -116,7 +134,8 @@ static CGRect MCPanelRect(MCPlayerRect r, MCPlayerRect panel) {
 @property (nonatomic, strong) UILabel *artistLabel;
 @property (nonatomic, readonly) UILabel *titleTextLabel;
 @property (nonatomic, strong) UIView *informationPanel;
-@property (nonatomic, strong) CAGradientLayer *informationGradient;
+@property (nonatomic, strong) UIImageView *informationGradient;
+@property (nonatomic, strong) NSBlockOperation *analysisOperation;
 @property (nonatomic) BOOL informationHidden;
 @property (nonatomic) NSUInteger informationGeneration, appearanceGeneration;
 @property (nonatomic, strong) UIImage *analyzedArtwork;
@@ -150,14 +169,13 @@ static CGRect MCPanelRect(MCPlayerRect r, MCPlayerRect panel) {
         self.informationPanel = [UIView new];
         self.informationPanel.opaque = NO;
         self.informationPanel.backgroundColor = [UIColor clearColor];
-        self.informationGradient = [CAGradientLayer layer];
-        self.informationGradient.startPoint = CGPointMake(.5, 0);
-        self.informationGradient.endPoint = CGPointMake(.5, 1);
-        NSMutableArray *locations = [NSMutableArray array];
-        for (unsigned i = 0; i < MCCoverGradientStops; i++)
-            [locations addObject:@(i / (double)(MCCoverGradientStops - 1))];
-        self.informationGradient.locations = locations;
-        [self.informationPanel.layer addSublayer:self.informationGradient];
+        self.informationGradient = [UIImageView new];
+        self.informationGradient.contentMode = UIViewContentModeScaleToFill;
+        self.informationGradient.userInteractionEnabled = NO;
+        self.informationGradient.isAccessibilityElement = NO;
+        self.informationGradient.layer.minificationFilter = kCAFilterLinear;
+        self.informationGradient.layer.magnificationFilter = kCAFilterLinear;
+        [self.informationPanel addSubview:self.informationGradient];
         [self addSubview:self.informationPanel];
         self.titleButton = [MCCoverTitleButton new];
         self.titleButton.backgroundColor = [UIColor clearColor];
@@ -185,6 +203,8 @@ static CGRect MCPanelRect(MCPlayerRect r, MCPlayerRect panel) {
             name:MCThemeDidChangeNotification object:nil];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(motionChanged)
             name:MCMotionDidChangeNotification object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(memoryWarning)
+            name:UIApplicationDidReceiveMemoryWarningNotification object:nil];
         [self theme];
     }
     return self;
@@ -197,19 +217,11 @@ static CGRect MCPanelRect(MCPlayerRect r, MCPlayerRect panel) {
 }
 - (void)applyAppearance:(MCCoverAppearance)appearance {
     self.appearance = appearance;
-    NSMutableArray *colors = [NSMutableArray array];
-    NSMutableArray *locations = [NSMutableArray array];
-    UIColor *tint = MCCoverUIColor(appearance.tint);
-    for (unsigned i = 0; i < MCCoverGradientStops; i++) {
-        [colors addObject:(__bridge id)[tint colorWithAlphaComponent:appearance.opacity[i]].CGColor];
-        [locations addObject:@(MCCoverGradientPosition(appearance, i))];
-    }
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-    self.informationGradient.colors = colors;
-    self.informationGradient.locations = locations;
-    [CATransaction commit];
-    MCColor chip = MCColorBlend(appearance.tint, MCCoverRGB([MCTheme sharedTheme].primary), .12);
+    MCPlayerCoverLayout l = MCPlayerCoverMakeLayout(self.bounds.size.width, self.bounds.size.height, 1);
+    MCColor local = self.bounds.size.width > 0 && l.panel.height > 0 ? MCCoverGradientColor(appearance,
+        (l.quality.x + l.quality.width / 2) / self.bounds.size.width,
+        (l.quality.y + l.quality.height / 2 - l.panel.y) / l.panel.height) : appearance.tint;
+    MCColor chip = MCColorBlend(local, MCCoverRGB([MCTheme sharedTheme].primary), .12);
     self.qualityButton.fill = MCCoverUIColor(chip);
     self.qualityButton.ink = MCCoverUIColor(MCColorForeground(chip));
     self.favoriteButton.ink = MCCoverUIColor(appearance.foreground);
@@ -240,6 +252,8 @@ static CGRect MCPanelRect(MCPlayerRect r, MCPlayerRect panel) {
     [self.titleButton setTitleColor:[text colorWithAlphaComponent:.78] forState:UIControlStateHighlighted];
 }
 - (void)updateArtwork:(UIImage *)image {
+    [self.analysisOperation cancel]; self.analysisOperation = nil;
+    self.informationGradient.image = nil;
     self.analyzedArtwork = image;
     self.appearanceGeneration++;
     self.requestedAppearanceKey = nil;
@@ -253,48 +267,67 @@ static CGRect MCPanelRect(MCPlayerRect r, MCPlayerRect panel) {
         self.bounds.size.width <= 0 || self.bounds.size.height <= 0) return;
     double width = self.bounds.size.width, height = self.bounds.size.height;
     MCColor fallback = MCCoverRGB([MCTheme sharedTheme].surfaceContainerHigh);
-    NSString *sampleKey = [NSString stringWithFormat:@"%.4f", width / height];
-    /* Sample the actual single-line label widths. */
+    NSNumber *identity = objc_getAssociatedObject(image, &MCCoverAppearanceCacheKey);
+    if (!identity) {
+        static NSUInteger nextIdentity = 0;
+        identity = @(++nextIdentity);
+        objc_setAssociatedObject(image, &MCCoverAppearanceCacheKey, identity, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    NSString *sampleKey = [NSString stringWithFormat:@"%@:%0.4f", identity, width / height];
     layout.title.width = MIN(layout.title.width, [self.coverTitle ?: @"" sizeWithFont:self.titleTextLabel.font].width);
     layout.artist.width = MIN(layout.artist.width, [self.coverArtist ?: @"" sizeWithFont:self.artistLabel.font].width);
     layout.title.y += 2; layout.title.height -= 4;
     layout.artist.y += 1; layout.artist.height -= 2;
-    NSString *key = [NSString stringWithFormat:@"v2:%@:%gx%g:%u:%.1f:%.1f:%g,%g,%g", sampleKey, width, height,
-        layout.titleLines, layout.title.width, layout.artist.width, fallback.r, fallback.g, fallback.b];
+    CGImageAlphaInfo alpha = CGImageGetAlphaInfo(image.CGImage);
+    BOOL transparent = alpha != kCGImageAlphaNone && alpha != kCGImageAlphaNoneSkipFirst && alpha != kCGImageAlphaNoneSkipLast;
+    NSString *key = [NSString stringWithFormat:@"field-v1:%@:%gx%g:%.1f:%.1f:%g,%g,%g", sampleKey, width, height,
+        layout.title.width, layout.artist.width, transparent ? fallback.r : 0, transparent ? fallback.g : 0, transparent ? fallback.b : 0];
     if ([self.requestedAppearanceKey isEqual:key]) return;
     self.requestedAppearanceKey = key;
     NSUInteger generation = ++self.appearanceGeneration;
-    MCCoverAppearanceCache *cache = objc_getAssociatedObject(image, &MCCoverAppearanceCacheKey);
-    if (!cache) {
-        cache = [MCCoverAppearanceCache new];
-        objc_setAssociatedObject(image, &MCCoverAppearanceCacheKey, cache, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [self.analysisOperation cancel]; self.analysisOperation = nil;
+    MCCoverAppearanceResult *saved = [MCCoverResultCache() objectForKey:key];
+    if (saved.parameters.length == sizeof(MCCoverAppearance)) {
+        MCCoverAppearance appearance; [saved.parameters getBytes:&appearance length:sizeof appearance];
+        self.hasArtworkAppearance = YES; self.informationGradient.image = saved.overlay;
+        [self applyAppearance:appearance]; return;
     }
-    NSData *saved = [cache.appearances objectForKey:key];
-    if (saved.length == sizeof(MCCoverAppearance)) {
-        MCCoverAppearance appearance; [saved getBytes:&appearance length:sizeof appearance];
-        self.hasArtworkAppearance = YES;
-        [self applyAppearance:appearance];
-        return;
-    }
-    NSData *samples = [cache.samples objectForKey:sampleKey];
+    self.informationGradient.image = nil;
+    NSData *samples = [MCCoverSampleCache() objectForKey:sampleKey];
     __weak MCPlayerCoverCard *weakSelf = self;
-    dispatch_async(MCCoverAnalysisQueue(), ^{
+    NSBlockOperation *operation = [NSBlockOperation new];
+    __weak NSBlockOperation *weakOperation = operation;
+    [operation addExecutionBlock:^{
         @autoreleasepool {
+            NSBlockOperation *active = weakOperation;
+            if (!active || [active isCancelled]) return;
             NSData *pixels = samples ?: MCCoverPixels(image, width / height);
+            if ([active isCancelled]) return;
             MCCoverAppearance appearance = MCCoverAppearanceFallback(fallback);
             if (pixels.length == 48 * 48 * 4)
                 MCCoverAppearanceMake(pixels.bytes, 48, 48, 48 * 4, width, height, layout, fallback, &appearance);
-            NSData *result = [NSData dataWithBytes:&appearance length:sizeof appearance];
+            if ([active isCancelled]) return;
+            MCCoverAppearanceResult *result = [MCCoverAppearanceResult new];
+            result.parameters = [NSData dataWithBytes:&appearance length:sizeof appearance];
+            result.overlay = MCCoverOverlayImage(appearance);
+            if ([active isCancelled] || !result.overlay) return;
             dispatch_async(dispatch_get_main_queue(), ^{
-                if (pixels) [cache.samples setObject:pixels forKey:sampleKey];
-                [cache.appearances setObject:result forKey:key];
                 MCPlayerCoverCard *card = weakSelf;
-                if (!card || card.analyzedArtwork != image || card.appearanceGeneration != generation) return;
-                card.hasArtworkAppearance = YES;
+                if (!card || card.analyzedArtwork != image || card.appearanceGeneration != generation ||
+                    ![card.requestedAppearanceKey isEqual:key] || [weakOperation isCancelled]) return;
+                if (pixels) [MCCoverSampleCache() setObject:pixels forKey:sampleKey cost:pixels.length];
+                [MCCoverResultCache() setObject:result forKey:key cost:result.parameters.length + 128 * 96 * 4];
+                card.analysisOperation = nil; card.hasArtworkAppearance = YES;
+                card.informationGradient.image = result.overlay;
                 [card applyAppearance:appearance];
             });
         }
-    });
+    }];
+    self.analysisOperation = operation;
+    [MCCoverAnalysisQueue() addOperation:operation];
+}
+- (void)memoryWarning {
+    [MCCoverSampleCache() removeAllObjects]; [MCCoverResultCache() removeAllObjects];
 }
 - (void)toggleInformation {
     BOOL hidden = !self.informationHidden;
@@ -362,5 +395,5 @@ static CGRect MCPanelRect(MCPlayerRect r, MCPlayerRect panel) {
     if (![self.qualityButton.currentTitle isEqual:text])
         [self.qualityButton setTitle:text forState:UIControlStateNormal];
 }
-- (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; }
+- (void)dealloc { [self.analysisOperation cancel]; [[NSNotificationCenter defaultCenter] removeObserver:self]; }
 @end

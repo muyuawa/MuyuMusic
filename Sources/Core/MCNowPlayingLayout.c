@@ -58,7 +58,7 @@ MCPlayerCoverLayout MCPlayerCoverMakeLayout(double width, double height, unsigne
     l.titleLines = 1;
     /* One fixed-size title row. Fade above the information so the scrim
        already protects the first glyphs, rather than starting behind them. */
-    double fade = fmin(tablet ? 24 : 18, fmax(8, height * .4 - panelHeight));
+    double fade = fmin(tablet ? 24 : 18, fmax(8, height * .38 - panelHeight));
     l.panel = rect(0, fmax(0, height - panelHeight - fade), width, fmin(height, panelHeight + fade));
     double textWidth = fmax(0, width - padding * 2 - 52);
     double titleY = height - panelHeight + top, titleHeight = titleLine;

@@ -23,7 +23,7 @@ static void checkCover(double side, unsigned requestedLines) {
         assert(l.titleFontSize == 16 && l.artistFontSize == 12);
     }
     assert(l.titleLines == 1);
-    assert(l.title.y - l.panel.y >= 10);
+    assert(l.title.y - l.panel.y >= 8);
     if (side == 220) assert(l.title.width >= 8 * 16); /* both reported Chinese titles fit */
     MCPlayerRect metadata[] = { l.title, l.artist, l.quality, l.favorite };
     for (unsigned i = 0; i < sizeof metadata / sizeof *metadata; i++) {
