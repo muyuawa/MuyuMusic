@@ -1,6 +1,28 @@
 #include "MCColor.h"
 #include <math.h>
 #include <string.h>
+MCMaterialPalette MCColorMaterialPalette(MCColor seed, bool dark) {
+    MCMaterialPalette p;
+    MCColor base;
+    MCColorParse(dark ? "#151318" : "#FCFAFF", &base);
+    p.background = MCColorBlend(base, seed, .035);
+    MCColorParse(dark ? "#1D1B20" : "#F8F5FC", &base);
+    p.surface = MCColorBlend(base, seed, .04);
+    MCColorParse(dark ? "#2B2830" : "#EEEBF2", &base);
+    p.container = MCColorBlend(base, seed, .07);
+    MCColorParse(dark ? "#36323B" : "#E7E2EC", &base);
+    p.containerHigh = MCColorBlend(base, seed, .07);
+    MCColorParse(dark ? "#393247" : "#E7E0F5", &base);
+    p.primaryContainer = MCColorBlend(base, seed, dark ? .16 : .12);
+    p.onContainer = MCColorForeground(p.primaryContainer);
+    p.primary = MCColorReadableAccent(seed, dark, p.containerHigh);
+    p.onPrimary = MCColorForeground(p.primary);
+    MCColorParse(dark ? "#EAE5ED" : "#211D26", &p.text);
+    MCColorParse(dark ? "#CBC3D1" : "#57515E", &p.muted);
+    p.outline = MCColorBlend(p.text, p.background, .76);
+    MCColorParse(dark ? "#FFB1C8" : "#973957", &p.accent);
+    return p;
+}
 static int digit(char x) {
     if (x >= '0' && x <= '9')
         return x - '0';

@@ -1,5 +1,9 @@
 #import <UIKit/UIKit.h>
 extern NSString *const MCThemeDidChangeNotification;
+typedef NS_ENUM(NSUInteger, MCTypeRole) {
+    MCTypeTitle, MCTypeSection, MCTypeBody, MCTypeLabel, MCTypeCaption
+};
+/* The app's single ThemeManager, shared by legacy and Material components. */
 @interface MCTheme : NSObject
 + (instancetype)sharedTheme;
 @property (nonatomic, copy) NSString *hex;
@@ -12,6 +16,15 @@ extern NSString *const MCThemeDidChangeNotification;
 @property (nonatomic, readonly) UIColor *text;
 @property (nonatomic, readonly) UIColor *muted;
 @property (nonatomic, readonly) UIColor *accent;
+@property (nonatomic, readonly) UIColor *surfaceContainer;
+@property (nonatomic, readonly) UIColor *surfaceContainerHigh;
+@property (nonatomic, readonly) UIColor *onSurface;
+@property (nonatomic, readonly) UIColor *onSurfaceVariant;
+@property (nonatomic, readonly) UIColor *primaryContainer;
+@property (nonatomic, readonly) UIColor *onPrimaryContainer;
+@property (nonatomic, readonly) UIColor *outline;
+@property (nonatomic, readonly) CGFloat smallRadius, cardRadius, coverRadius;
+- (UIFont *)fontForRole:(MCTypeRole)role;
 - (BOOL)setValidatedHex:(NSString *)hex;
 - (void)apply;
 - (void)applyToNavigationBar:(UINavigationBar *)bar;

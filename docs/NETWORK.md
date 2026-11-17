@@ -1,6 +1,6 @@
 # Direct NetEase adapter
 
-`MCAPI` uses native Objective-C/CommonCrypto and sends encrypted requests directly to `https://interface3.music.163.com/eapi/…`. No server, embedded JavaScript runtime, fabricated catalog, IP spoofing, media substitution, DRM removal, or rights bypass is used. This unofficial protocol can change independently of the app.
+`MCAPI` uses native Objective-C/CommonCrypto and sends encrypted requests directly to `https://interface3.music.163.com/eapi/…`, with account homepage recommendations sent to `https://interfacepc.music.163.com/eapi/homepage/block/page`. No server, embedded JavaScript runtime, fabricated catalog, IP spoofing, media substitution, DRM removal, or rights bypass is used. This unofficial protocol can change independently of the app.
 
 ## Primary sources
 
@@ -10,14 +10,15 @@ Inspected 2026-11-03:
 - [HyPlayer EAPI contracts](https://github.com/HyPlayer/HyPlayer.NeteaseProvider/tree/c11cd1278ed0b3a232242eded7e6d14d1c9f8683/HyPlayer.NeteaseApi) independently confirms QR and playback URL paths and trial metadata.
 - [Current API crypto](https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced/blob/984cc021b8598cf94c22134f32a8426887fb2de7/util/crypto.js), [envelopes](https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced/blob/984cc021b8598cf94c22134f32a8426887fb2de7/util/request.js), and [endpoint modules](https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced/tree/984cc021b8598cf94c22134f32a8426887fb2de7/module). Some defaults now use newer protocols; EAPI availability was separately checked against the real service.
 
-EAPI compatibility uses UTF-8 JSON, MD5 of `nobody` + `/api/…` path + `use` + JSON + `md5forencrypt`, then AES-128-ECB/PKCS#7 with protocol key `e82ckenh8dichen8`. Uppercase ciphertext hex is submitted as form field `params`. These operations implement the service protocol; TLS supplies transport security. Requests set `e_r=false`; uncompressed encrypted JSON responses are also accepted. JSON must be a dictionary with a numeric service code.
+EAPI compatibility uses UTF-8 JSON, MD5 of `nobody` + `/api/…` path + `use` + JSON + `md5forencrypt`, then AES-128-ECB/PKCS#7 with protocol key `e82ckenh8dichen8`. Uppercase ciphertext hex is submitted as form field `params`. These operations implement the service protocol; TLS supplies transport security. Homepage recommendations set `e_r=true`; other requests set `e_r=false`. Plain and uncompressed encrypted JSON responses are accepted. JSON must be a dictionary with a numeric service code.
 
 | Feature | Protocol path (`/api/` is rewritten to `/eapi/` in the URL) |
 | --- | --- |
 | Search / discover | `/api/cloudsearch/pc`, `/api/personalized/playlist` |
+| Account home song recommendations / daily card | `/api/homepage/block/page`, `/api/v3/discovery/recommend/songs` |
 | Playlist / detail batches | `/api/v6/playlist/detail`, `/api/v3/song/detail` |
 | Album / artist / albums | `/api/v1/album/{id}`, `/api/v1/artist/{id}`, `/api/artist/albums/{id}` |
-| User playlists / likes | `/api/user/playlist`, `/api/song/like/get`, `/api/radio/like` |
+| User playlists / likes | `/api/user/playlist`, `/api/v6/playlist/detail`, `/api/radio/like` |
 | Playback / lyrics | `/api/song/enhance/player/url/v1`, `/api/song/lyric` |
 | QR / poll | `/api/login/qrcode/unikey`, `/api/login/qrcode/client/login` |
 | Refresh / account | `/api/login/token/refresh`, `/api/w/nuser/account/get` |
@@ -26,13 +27,15 @@ IDs remain decimal strings, using `NSNumber.stringValue` rather than 32-bit conv
 
 ## Transport and sessions
 
+The account home song list explicitly requests `HOMEPAGE_BLOCK_RED_SIMILAR_SONG` through cursor `blockCodeOrderList`, preferring its stable ID and retaining exact-title compatibility for older responses; unavailable modules do not fall back to unrelated home blocks. The homepage request uses PC client metadata, `extInfo` containing `abInfo.hp-new-homepageV3.1=t3`, and string `newStyle="true"`. Every invocation, including pull-to-refresh, sends `refresh=true` and makes a fresh request. The daily card remains a separate request. Likes use the owned specialType=5 playlist and sort trackIds by `at` descending with stable ties; ordinary playlists keep their service order. Lyric variants preserve original, translated and romanized LRC strings from `lrc`, `tlyric` and `romalrc`.
+
 The app links pinned libcurl/mbedTLS and uses bundle `cacert.pem`, certificate and hostname verification, TLS 1.2 minimum for HTTPS, and no automatic redirects. NetEase and ordinary transport remain HTTPS-only. Missing CA data is an error for HTTPS. A redirect's lower-case `location` and numeric `status` are exposed for playback to validate, limit, and follow explicitly. The audio caller requires a complete 2xx response and rejects partial 206 responses; 3xx complete for caller handling and 4xx/5xx fail.
 
 Selected custom sources use `sourceRequestURL` for control and `sourceStreamURL` for audio. The default-enabled `music.sources.httpsOnly` preference requires HTTPS on both paths and audio redirects; disabling it permits HTTP for subsequent custom requests. HTTPS certificate/hostname validation remains enabled. Script downloads and repository URLs remain HTTPS-only. Streams always strip Cookie/Authorization; custom control requests receive only source-supplied credentials, never the NetEase session.
 
 Three curl workers bound active transfers. Ordinary bodies are limited to 8 MiB after decompression; headers to 64 KiB. Streaming passes blocks ≤32 KiB directly to playback without whole-song buffering. Connect timeout is 15 seconds; low-speed timeout 30 seconds; ordinary total timeout 40 seconds. JSON encryption/parsing has one background queue. Public API and ordinary HTTP completions arrive on main; all stream callbacks run on a worker. Stream byte pointers are valid only during their callback.
 
-There is no shared cookie jar. Cookies/authorization may be sent only to exact API hosts `music.163.com`, `interface.music.163.com`, and `interface3.music.163.com`; every stream strips them regardless of host. `cancel` is thread-safe, checked before opening queued connections and through active progress/write callbacks. Returning `NO` from data also cancels. One terminal completion follows shutdown; a callback already executing may finish after `cancel`, so callers retain their stream state until completion.
+There is no shared cookie jar. Cookies/authorization may be sent only to exact API hosts `music.163.com`, `interface.music.163.com`, `interface3.music.163.com`, and `interfacepc.music.163.com`; every stream strips them regardless of host. `cancel` is thread-safe, checked before opening queued connections and through active progress/write callbacks. Returning `NO` from data also cancels. One terminal completion follows shutdown; a callback already executing may finish after `cancel`, so callers retain their stream state until completion.
 
 Only `MUSIC_U`, `MUSIC_A`, `__csrf`, and `NMTID` from service response cookies are accepted. Sessions/profile use Keychain generic-password service `com.muyu.cloudmusic.session`, account `netease`, accessible after first unlock on this device only. A stable random client ID in preferences is not a credential. Cookies, keys and QR payloads are never logged. Logout deletes local secrets and advances generations; new authorization invalidates older account responses, new QR creation invalidates older polls, and a delayed refresh cannot delete a newer session.
 

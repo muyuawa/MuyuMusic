@@ -1,8 +1,10 @@
 #import "MCTheme.h"
 #import "MCColor.h"
 #import <QuartzCore/QuartzCore.h>
+#import <objc/runtime.h>
 #include <math.h>
 NSString *const MCThemeDidChangeNotification = @"MCThemeDidChangeNotification";
+static char MCArtworkColorKey;
 static UIColor *MCUIColor(MCColor c) {
     return [UIColor colorWithRed:c.r green:c.g blue:c.b alpha:1];
 }
@@ -23,7 +25,7 @@ static UIImage *MCThemeBarImage(UIColor *color) {
 static UIImage *MCThemeFieldImage(UIColor *color) {
     UIGraphicsBeginImageContextWithOptions(CGSizeMake(20, 36), NO, 0);
     [color setFill];
-    [[UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, 20, 36) cornerRadius:8] fill];
+    [[UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, 20, 36) cornerRadius:12] fill];
     UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
     UIGraphicsEndImageContext();
     return [image resizableImageWithCapInsets:UIEdgeInsetsMake(9, 9, 9, 9)];
@@ -68,8 +70,10 @@ static UIImage *MCThemeBackImage(UIColor *color) {
 @interface MCTheme ()
 @property (nonatomic, copy) NSString *artworkHex;
 @property (nonatomic) NSUInteger artworkGeneration;
+@property (nonatomic) BOOL paletteValid;
+@property (nonatomic) MCMaterialPalette cachedPalette;
 - (MCColor)tintColor;
-- (MCColor)themeBase:(BOOL)surface;
+- (MCMaterialPalette)palette;
 @end
 @implementation MCTheme
 + (instancetype)sharedTheme {
@@ -91,40 +95,44 @@ static UIImage *MCThemeBackImage(UIColor *color) {
     }
     return self;
 }
-- (UIColor *)primary {
-    MCColor c = [self tintColor];
-    return MCUIColor(MCColorReadableAccent(c, self.dark, [self themeBase:self.dark]));
-}
 - (MCColor)tintColor {
     MCColor c;
     MCColorParse((self.followArtwork && self.artworkHex ? self.artworkHex : self.hex).UTF8String, &c);
     return c;
 }
-- (MCColor)themeBase:(BOOL)surface {
-    MCColor base;
-    MCColorParse(self.dark ? (surface ? "#242C3C" : "#171C29") : (surface ? "#FFFFFF" : "#F6F7FF"), &base);
-    return self.followArtwork && self.artworkHex
-               ? MCColorBlend(base, [self tintColor], surface ? (self.dark ? .12 : .06) : (self.dark ? .16 : .12))
-               : base;
+- (MCMaterialPalette)palette {
+    if (!self.paletteValid) {
+        self.cachedPalette = MCColorMaterialPalette([self tintColor], self.dark);
+        self.paletteValid = YES;
+    }
+    return self.cachedPalette;
 }
-- (UIColor *)onPrimary {
-    MCColor c = MCColorReadableAccent([self tintColor], self.dark, [self themeBase:self.dark]);
-    return MCUIColor(MCColorForeground(c));
-}
-- (UIColor *)background {
-    return MCUIColor([self themeBase:NO]);
-}
-- (UIColor *)surface {
-    return MCUIColor([self themeBase:YES]);
-}
-- (UIColor *)text {
-    return MCRGB(self.dark ? 0xF4F5FF : 0x19243B);
-}
-- (UIColor *)muted {
-    return MCRGB(self.dark ? 0xB9C5DD : 0x526078);
-}
-- (UIColor *)accent {
-    return MCRGB(self.dark ? 0xFFC0DB : 0xA63D6B);
+- (UIColor *)primary { return MCUIColor([self palette].primary); }
+- (UIColor *)onPrimary { return MCUIColor([self palette].onPrimary); }
+- (UIColor *)background { return MCUIColor([self palette].background); }
+- (UIColor *)surface { return MCUIColor([self palette].surface); }
+- (UIColor *)surfaceContainer { return MCUIColor([self palette].container); }
+- (UIColor *)surfaceContainerHigh { return MCUIColor([self palette].containerHigh); }
+- (UIColor *)onSurface { return self.text; }
+- (UIColor *)onSurfaceVariant { return self.muted; }
+- (UIColor *)primaryContainer { return MCUIColor([self palette].primaryContainer); }
+- (UIColor *)onPrimaryContainer { return MCUIColor([self palette].onContainer); }
+- (UIColor *)text { return MCUIColor([self palette].text); }
+- (UIColor *)muted { return MCUIColor([self palette].muted); }
+- (UIColor *)outline { return MCUIColor([self palette].outline); }
+- (UIColor *)accent { return MCUIColor([self palette].accent); }
+- (CGFloat)smallRadius { return 12; }
+- (CGFloat)cardRadius { return 20; }
+- (CGFloat)coverRadius { return 24; }
+- (UIFont *)fontForRole:(MCTypeRole)role {
+    switch (role) {
+        case MCTypeTitle: return [UIFont boldSystemFontOfSize:22];
+        case MCTypeSection: return [UIFont boldSystemFontOfSize:17];
+        case MCTypeBody: return [UIFont systemFontOfSize:15];
+        case MCTypeLabel: return [UIFont boldSystemFontOfSize:13];
+        case MCTypeCaption: return [UIFont systemFontOfSize:12];
+    }
+    return [UIFont systemFontOfSize:15];
 }
 - (BOOL)setValidatedHex:(NSString *)hex {
     MCColor c;
@@ -158,6 +166,16 @@ static UIImage *MCThemeBackImage(UIColor *color) {
         if (self.artworkHex) { self.artworkHex = nil; [self apply]; }
         return;
     }
+    // The artwork cache retains these images. Keep only a tiny color result on
+    // each image, including a negative result for neutral/transparent artwork.
+    id cached = objc_getAssociatedObject(image, &MCArtworkColorKey);
+    if (cached) {
+        NSString *hex = [cached isKindOfClass:[NSString class]] ? cached : nil;
+        if (self.artworkHex == hex || [self.artworkHex isEqual:hex]) return;
+        self.artworkHex = hex;
+        [self apply];
+        return;
+    }
     CGImageRef cover = CGImageRetain(image.CGImage);
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         uint8_t pixels[16*16*4] = {0};
@@ -176,6 +194,7 @@ static UIImage *MCThemeBackImage(UIColor *color) {
         NSString *hex = found ? [NSString stringWithFormat:@"#%02X%02X%02X",(unsigned)round(color.r*255),
                                  (unsigned)round(color.g*255),(unsigned)round(color.b*255)] : nil;
         dispatch_async(dispatch_get_main_queue(), ^{
+            objc_setAssociatedObject(image, &MCArtworkColorKey, hex ?: [NSNull null], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             if (!self.followArtwork || generation != self.artworkGeneration) return;
             if (self.artworkHex == hex || [self.artworkHex isEqual:hex]) return;
             self.artworkHex = hex;
@@ -200,7 +219,8 @@ static UIImage *MCThemeBackImage(UIColor *color) {
         bar.barStyle = self.dark ? UIBarStyleBlack : UIBarStyleDefault;
     }
     bar.titleTextAttributes = @{UITextAttributeTextColor:self.text,
-                               UITextAttributeTextShadowColor:[UIColor clearColor]};
+                               UITextAttributeTextShadowColor:[UIColor clearColor],
+                               UITextAttributeFont:[self fontForRole:MCTypeSection]};
     // UIAppearance only initializes new buttons. Refresh existing/back items
     // after a cover-color change and whenever a controller is pushed.
     for (UINavigationItem *navigation in bar.items) {
@@ -250,8 +270,8 @@ static UIImage *MCThemeBackImage(UIColor *color) {
 }
 - (void)applyToSearchBar:(UISearchBar *)bar {
     if (!bar) return;
-    UIColor *surface = self.dark ? self.surface : [UIColor whiteColor];
-    UIColor *field = self.dark ? MCRGB(0x343D4D) : MCRGB(0xF0F2F5);
+    UIColor *surface = self.surface;
+    UIColor *field = self.surfaceContainer;
     bar.backgroundColor = surface;
     bar.backgroundImage = MCThemeBarImage(surface);
     bar.translucent = NO;
@@ -267,9 +287,8 @@ static UIImage *MCThemeBackImage(UIColor *color) {
     if (!control) return;
     // Supplying every divider is essential on iOS 6: the native selected
     // divider otherwise contributes its blue glossy edge to custom images.
-    UIColor *surface = self.dark ? self.surface : [UIColor whiteColor];
-    UIImage *normal = MCThemeBarImage(surface);
-    UIImage *selected = MCThemeBarImage(self.primary);
+    UIImage *normal = MCThemeBarImage(self.surfaceContainer);
+    UIImage *selected = MCThemeBarImage(self.primaryContainer);
     UIImage *pressed = MCThemeBarImage(self.dark ? MCRGB(0x3A4355) : MCRGB(0xE8ECF2));
     UIImage *divider = MCThemeBarImage([UIColor clearColor]);
     NSArray *states = @[@(UIControlStateNormal), @(UIControlStateSelected),
@@ -282,19 +301,20 @@ static UIImage *MCThemeBackImage(UIColor *color) {
         [control setBackgroundImage:active ? selected : (state & UIControlStateHighlighted) ? pressed : normal
                           forState:state barMetrics:UIBarMetricsDefault];
         [control setTitleTextAttributes:@{UITextAttributeFont:active ? [UIFont boldSystemFontOfSize:13] : [UIFont systemFontOfSize:13],
-            UITextAttributeTextColor:active ? self.onPrimary : self.text,
+            UITextAttributeTextColor:active ? self.onPrimaryContainer : self.text,
             UITextAttributeTextShadowColor:[UIColor clearColor],
             UITextAttributeTextShadowOffset:[NSValue valueWithUIOffset:UIOffsetZero]} forState:state];
         for (NSNumber *right in states)
             [control setDividerImage:divider forLeftSegmentState:state
                   rightSegmentState:right.unsignedIntegerValue barMetrics:UIBarMetricsDefault];
     }
-    control.layer.cornerRadius = 7;
+    control.layer.cornerRadius = 16;
     control.layer.borderWidth = 0;
     control.layer.shadowOpacity = 0;
     control.clipsToBounds = YES;
 }
 - (void)apply {
+    self.paletteValid = NO;
     if (@available(iOS 7.0, *)) {
         [[UINavigationBar appearance] setBarTintColor:self.surface];
         [[UITabBar appearance] setBarTintColor:self.surface];

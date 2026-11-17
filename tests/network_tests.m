@@ -29,6 +29,8 @@ int main(void) { @autoreleasepool {
     error = nil;
     CHECK([MCEAPI playableURL:@{@"url":@"https://untrusted.example/song",@"code":@200} error:&error] == nil);
     CHECK([MCEAPI isAPIHost:@"interface3.music.163.com"]);
+    CHECK([MCEAPI isAPIHost:@"interfacepc.music.163.com"]);
+    CHECK(![MCEAPI isAPIHost:@"interfacepc.music.163.com.evil.example"]);
     CHECK(![MCEAPI isAPIHost:@"music.163.com.evil.example"]);
     CHECK(![MCEAPI isAPIHost:@"m801.music.126.net"]);
     error = nil;

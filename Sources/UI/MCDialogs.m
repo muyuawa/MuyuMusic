@@ -35,7 +35,7 @@ typedef NS_ENUM(NSInteger, MCDialogKind) {
 @implementation MCDialogButton
 - (id)initWithFrame:(CGRect)frame {
     if ((self = [super initWithFrame:frame])) {
-        self.layer.cornerRadius = 7;
+        self.layer.cornerRadius = [MCTheme sharedTheme].smallRadius;
         self.clipsToBounds = YES;
         self.titleLabel.font = [UIFont systemFontOfSize:16];
         self.titleLabel.numberOfLines = 0;
@@ -110,7 +110,7 @@ static CGFloat MCDialogTextHeight(NSString *text, UIFont *font, CGFloat width) {
     self.view.backgroundColor = [UIColor colorWithWhite:0 alpha:.55];
     self.view.accessibilityViewIsModal = YES;
     self.card = [UIView new];
-    self.card.layer.cornerRadius = 12;
+    self.card.layer.cornerRadius = [MCTheme sharedTheme].cardRadius;
     self.card.clipsToBounds = YES;
     [self.view addSubview:self.card];
     self.body = [UIScrollView new];
@@ -192,8 +192,10 @@ static CGFloat MCDialogTextHeight(NSString *text, UIFont *font, CGFloat width) {
     if (!self.owner.inactive) [self.field becomeFirstResponder];
     UIAccessibilityPostNotification(UIAccessibilityScreenChangedNotification, self.heading);
 }
-- (BOOL)shouldAutorotate { return NO; }
-- (NSUInteger)supportedInterfaceOrientations { return UIInterfaceOrientationMaskPortrait; }
+- (BOOL)shouldAutorotate { return UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad; }
+- (NSUInteger)supportedInterfaceOrientations {
+    return UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad ? UIInterfaceOrientationMaskAll : UIInterfaceOrientationMaskPortrait;
+}
 - (void)themeChanged:(NSNotification *)notification {
     (void)notification;
     [self applyTheme];
@@ -204,7 +206,8 @@ static CGFloat MCDialogTextHeight(NSString *text, UIFont *font, CGFloat width) {
     self.heading.textColor = theme.text;
     self.messageLabel.textColor = theme.muted;
     self.body.indicatorStyle = theme.dark ? UIScrollViewIndicatorStyleWhite : UIScrollViewIndicatorStyleBlack;
-    self.field.backgroundColor = theme.background;
+    self.field.backgroundColor = theme.surfaceContainer;
+    self.field.layer.cornerRadius = theme.smallRadius;
     self.field.textColor = theme.text;
     self.field.layer.borderColor = [theme.primary colorWithAlphaComponent:.45].CGColor;
     self.field.keyboardAppearance = theme.dark ? UIKeyboardAppearanceAlert : UIKeyboardAppearanceDefault;

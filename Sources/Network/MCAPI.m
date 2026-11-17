@@ -50,7 +50,19 @@ static NSArray *MCCatalog(id items) {
     }
     return result;
 }
-
+static long long MCAddedTime(id entry) {
+    id value = MCObject(entry)[@"at"];
+    return [value respondsToSelector:@selector(longLongValue)] ? MAX(0LL, [value longLongValue]) : 0;
+}
+static NSString *MCHomeTitle(id value) {
+    NSDictionary *ui = MCObject(MCObject(value)[@"uiElement"]);
+    return [NSString stringWithFormat:@"%@ %@", MCText(MCObject(ui[@"mainTitle"])[@"title"]),
+                                              MCText(MCObject(ui[@"subTitle"])[@"title"])];
+}
+static BOOL MCTasteTitle(NSString *text) {
+    return [text rangeOfString:@"根据你喜爱的歌曲推荐"].location != NSNotFound ||
+           [text rangeOfString:@"根据你喜欢的歌曲推荐"].location != NSNotFound;
+}
 @interface MCAPI () {
     NSMutableDictionary *_cookies;
     NSDictionary *_accountProfile;
@@ -194,8 +206,9 @@ static NSArray *MCCatalog(id items) {
                 if (cookieSnapshot[key])
                     header[key] = cookieSnapshot[key];
             NSMutableDictionary *payload = [parameters mutableCopy] ?: [NSMutableDictionary dictionary];
+            BOOL pcHome = [path isEqual:@"/api/homepage/block/page"];
             payload[@"header"] = header;
-            payload[@"e_r"] = @NO;
+            payload[@"e_r"] = pcHome ? @YES : @NO;
             NSError *error = nil;
             NSData *JSON = [NSJSONSerialization dataWithJSONObject:payload options:0 error:&error];
             NSString *encrypted =
@@ -219,8 +232,9 @@ static NSArray *MCCatalog(id items) {
                 @"User-Agent" : @"NeteaseMusic/3.1.17.204416",
                 @"Cookie" : [pairs componentsJoinedByString:@"; "]
             };
-            NSURL *url = [NSURL URLWithString:[@"https://interface3.music.163.com/eapi/"
-                                                  stringByAppendingString:[path substringFromIndex:5]]];
+            NSString *base = pcHome ? @"https://interfacepc.music.163.com/eapi/"
+                                    : @"https://interface3.music.163.com/eapi/";
+            NSURL *url = [NSURL URLWithString:[base stringByAppendingString:[path substringFromIndex:5]]];
             [[MCHTTPClient sharedClient]
                 requestURL:url
                     method:@"POST"
@@ -346,6 +360,63 @@ static NSArray *MCCatalog(id items) {
                                      @"unavailableTrackIDs":@[]}, nil);
         }];
 }
+- (void)tasteRecommendations:(MCAPICompletion)completion {
+    if (![self requireAccount:completion]) return;
+    // This section is not guaranteed to appear on the default home page.
+    // Ask for the red-heart similar-song block through the service cursor.
+    NSString *cursor = @"{\"offset\":0,\"blockCodeOrderList\":[\"HOMEPAGE_BLOCK_RED_SIMILAR_SONG\"]}";
+    // Every invocation requests recommendations again, including pull-to-refresh.
+    // The service may return the same batch even when refresh is true.
+    [self sendPath:@"/api/homepage/block/page" parameters:@{
+        @"refresh":@YES, @"cursor":cursor,
+        @"extInfo":@"{\"abInfo\":{\"hp-new-homepageV3.1\":\"t3\"}}",
+        @"newStyle":@"true", @"e_r":@YES}
+        completion:^(id result, NSError *error) {
+            if (error) { MCComplete(completion, nil, error); return; }
+            NSArray *blocks = MCList(MCObject(result[@"data"])[@"blocks"]);
+            NSDictionary *selected = nil;
+            // Prefer the stable section ID over changeable display copy.
+            // Keep exact-title support for older responses, without accepting
+            // unrelated style, artist, hot-comment or daily-song sections.
+            for (id item in blocks) {
+                NSDictionary *block = MCObject(item);
+                if ([MCText(block[@"blockCode"]) isEqual:@"HOMEPAGE_BLOCK_RED_SIMILAR_SONG"]) {
+                    selected = block;
+                    break;
+                }
+                if (!selected && MCTasteTitle(MCHomeTitle(block))) selected = block;
+            }
+            NSMutableArray *ids = [NSMutableArray array];
+            NSMutableDictionary *tracks = [NSMutableDictionary dictionary];
+            NSMutableSet *seen = [NSMutableSet set];
+            for (id creative in MCList(selected[@"creatives"])) {
+                for (id item in MCList(MCObject(creative)[@"resources"])) {
+                    NSDictionary *resource = MCObject(item);
+                    NSDictionary *song = MCObject(MCObject(resource[@"resourceExtInfo"])[@"songData"]);
+                    if (![MCText(resource[@"resourceType"]) isEqual:@"song"] && !song.count) continue;
+                    NSString *identifier = [MCEAPI identifier:song[@"id"] ?: resource[@"resourceId"]];
+                    if (!identifier || [seen containsObject:identifier]) continue;
+                    [ids addObject:identifier];
+                    [seen addObject:identifier];
+                    NSDictionary *track = [MCEAPI track:song];
+                    if ([track[@"title"] length]) tracks[identifier] = track;
+                    if (ids.count >= 1000) break;
+                }
+                if (ids.count >= 1000) break;
+            }
+            if (!ids.count) {
+                NSError *missing = MCAPIError(-50, @"网易云暂未返回根据喜欢歌曲的推荐，可稍后刷新。");
+                MCComplete(completion, nil, missing);
+                return;
+            }
+            if (tracks.count == ids.count) {
+                NSMutableArray *ordered = [NSMutableArray array];
+                for (NSString *identifier in ids) [ordered addObject:tracks[identifier]];
+                MCComplete(completion, @{@"tracks":ordered, @"totalCount":@(ordered.count), @"unavailableTrackIDs":@[]}, nil);
+            } else [self fetchTrackIDs:ids offset:0 accumulated:[NSMutableArray array]
+                          unavailable:[NSMutableArray array] fallback:tracks completion:completion];
+        }];
+}
 /* Batches are sequential: at most 100 detail records in one JSON response.
    A playlist too large for this device fails explicitly instead of truncating. */
 - (void)fetchTrackIDs:(NSArray *)ids
@@ -408,6 +479,9 @@ static NSArray *MCCatalog(id items) {
         }];
 }
 - (void)playlist:(NSString *)identifier completion:(MCAPICompletion)completion {
+    [self loadPlaylist:identifier sortByAddedTime:NO completion:completion];
+}
+- (void)loadPlaylist:(NSString *)identifier sortByAddedTime:(BOOL)sort completion:(MCAPICompletion)completion {
     if (![self requireID:identifier completion:completion])
         return;
     [self sendPath:@"/api/v6/playlist/detail"
@@ -419,7 +493,12 @@ static NSArray *MCCatalog(id items) {
             }
             NSDictionary *playlist = MCObject(result[@"playlist"]);
             NSMutableArray *ids = [NSMutableArray array];
-            for (id entry in MCList(playlist[@"trackIds"])) {
+            NSMutableArray *entries = [MCList(playlist[@"trackIds"]) mutableCopy];
+            if (sort) [entries sortWithOptions:NSSortStable usingComparator:^NSComparisonResult(id a, id b) {
+                long long first = MCAddedTime(a), second = MCAddedTime(b);
+                return first > second ? NSOrderedAscending : first < second ? NSOrderedDescending : NSOrderedSame;
+            }];
+            for (id entry in entries) {
                 NSString *trackID = [MCEAPI identifier:MCObject(entry)[@"id"]];
                 if (!trackID) {
                     MCComplete(completion, nil, MCAPIError(-36, @"歌单包含无效的歌曲编号"));
@@ -443,6 +522,7 @@ static NSArray *MCCatalog(id items) {
                      completion:^(id collection, NSError *failure) {
                          NSMutableDictionary *value = failure ? nil : [collection mutableCopy];
                          value[@"title"] = MCText(playlist[@"name"]);
+                         if (sort) value[@"sortOrder"] = @"addedTimeDescending";
                          MCComplete(completion, value, failure);
                      }];
         }];
@@ -572,19 +652,18 @@ static NSArray *MCCatalog(id items) {
             MCComplete(completion, nil, error ?: MCAPIError(301, @"登录已失效，请重新扫码"));
             return;
         }
-        [self sendPath:@"/api/song/like/get"
-            parameters:@{@"uid" : uid}
-            completion:^(id result, NSError *failure) {
+        [self userPlaylists:^(id result, NSError *failure) {
                 if (failure) {
                     MCComplete(completion, nil, failure);
                     return;
                 }
-                [self fetchTrackIDs:MCList(result[@"ids"])
-                             offset:0
-                        accumulated:[NSMutableArray array]
-                        unavailable:[NSMutableArray array]
-                           fallback:nil
-                         completion:completion];
+                for (NSDictionary *playlist in MCList(result)) {
+                    if ([playlist[@"specialType"] integerValue] == 5 && [playlist[@"creatorID"] isEqual:uid]) {
+                        [self loadPlaylist:playlist[@"id"] sortByAddedTime:YES completion:completion];
+                        return;
+                    }
+                }
+                MCComplete(completion, nil, MCAPIError(-49, @"网易云未返回账号的喜欢歌单，请重试或重新登录。"));
             }];
     }];
 }
@@ -650,12 +729,21 @@ static NSArray *MCCatalog(id items) {
         }];
 }
 - (void)lyrics:(NSString *)identifier completion:(MCAPICompletion)completion {
+    [self lyricVariants:identifier completion:^(id result, NSError *error) {
+        MCComplete(completion, error ? nil : result[@"original"], error);
+    }];
+}
+- (void)lyricVariants:(NSString *)identifier completion:(MCAPICompletion)completion {
     if (![self requireID:identifier completion:completion])
         return;
     [self sendPath:@"/api/song/lyric"
         parameters:@{@"id" : identifier, @"tv" : @-1, @"lv" : @-1, @"rv" : @-1, @"kv" : @-1, @"_nmclfl" : @1}
         completion:^(id result, NSError *error) {
-            MCComplete(completion, error ? nil : MCText(MCObject(result[@"lrc"])[@"lyric"]), error);
+            MCComplete(completion, error ? nil : @{
+                @"original":MCText(MCObject(result[@"lrc"])[@"lyric"]),
+                @"translation":MCText(MCObject(result[@"tlyric"])[@"lyric"]),
+                @"romanization":MCText(MCObject(result[@"romalrc"])[@"lyric"])
+            }, error);
         }];
 }
 - (void)createLoginKey:(MCAPICompletion)completion {

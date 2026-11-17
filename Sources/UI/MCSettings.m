@@ -9,6 +9,7 @@
 #import "MCArtwork.h"
 #import "MCPlayer.h"
 #import "MCAudioCache.h"
+#import "MCLyrics.h"
 static NSString *MCCacheSize(unsigned long long bytes) {
     return bytes >= 1024 * 1024 ? [NSString stringWithFormat:@"%.1f MB", bytes / (1024.0 * 1024)]
                                 : [NSString stringWithFormat:@"%.0f KB", bytes / 1024.0];
@@ -51,7 +52,7 @@ static NSString *MCCacheSize(unsigned long long bytes) {
 }
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)t {
     (void)t;
-    return 3;
+    return 4;
 }
 - (NSInteger)tableView:(UITableView *)t numberOfRowsInSection:(NSInteger)s {
     (void)t;
@@ -60,11 +61,12 @@ static NSString *MCCacheSize(unsigned long long bytes) {
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
     (void)tableView;
     return section == 0 ? @"动画效果立即生效，并记住你的选择。关闭后页面、封面、歌词和托盘直接更新。"
-         : section == 1 ? @"播放中的缓存会在播放结束后清理。" : nil;
+         : section == 1 ? @"播放中的缓存会在播放结束后清理。"
+         : section == 2 ? @"翻译和罗马音使用歌曲提供的同步歌词。开启罗马音后替换原文；没有对应内容时保留原文。" : nil;
 }
 - (NSString *)tableView:(UITableView *)t titleForHeaderInSection:(NSInteger)s {
     (void)t;
-    return @[ @"外观", @"播放与缓存", @"关于" ][s];
+    return @[ @"外观", @"播放与缓存", @"歌词显示", @"关于" ][s];
 }
 - (UITableViewCell *)tableView:(UITableView *)t cellForRowAtIndexPath:(NSIndexPath *)p {
     UITableViewCell *c = [[MCFlatTableCell alloc] initWithStyle:UITableViewCellStyleValue1
@@ -74,7 +76,7 @@ static NSString *MCCacheSize(unsigned long long bytes) {
     c.textLabel.backgroundColor = c.detailTextLabel.backgroundColor = [UIColor clearColor];
     c.textLabel.textColor = theme.text;
     c.detailTextLabel.textColor = theme.muted;
-    c.textLabel.font = [UIFont systemFontOfSize:15];
+    c.textLabel.font = [[MCTheme sharedTheme] fontForRole:MCTypeBody];
     if (p.section == 0) {
         c.textLabel.text = @[ @"深色模式", @"跟随封面配色", @"主题色", @"自定义 HEX", @"动画效果" ][p.row];
         if (p.row <= 1 || p.row == 4) {
@@ -106,6 +108,13 @@ static NSString *MCCacheSize(unsigned long long bytes) {
             c.detailTextLabel.text = [MCMusicSources sharedSources].selectedEntry[@"name"];
             c.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
         }
+    } else if (p.section == 2) {
+        c.textLabel.text = p.row == 0 ? @"歌词翻译" : @"日语罗马音";
+        MCFlatSwitch *control = [MCFlatSwitch new];
+        control.on = p.row == 0 ? MCLyricsShowTranslation() : MCLyricsUseRomanization();
+        [control addTarget:self action:p.row == 0 ? @selector(translationChanged:) : @selector(romanizationChanged:)
+            forControlEvents:UIControlEventValueChanged];
+        c.accessoryView = control;
     } else if (p.row == 1) {
         c.textLabel.text = @"使用协议";
         c.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
@@ -132,6 +141,8 @@ static NSString *MCCacheSize(unsigned long long bytes) {
     MCSetMotionEnabled(control.on);
     if (!control.on) MCFinishAnimations(control);
 }
+- (void)translationChanged:(MCFlatSwitch *)control { MCSetLyricsShowTranslation(control.on); }
+- (void)romanizationChanged:(MCFlatSwitch *)control { MCSetLyricsUseRomanization(control.on); }
 - (void)tableView:(UITableView *)t didSelectRowAtIndexPath:(NSIndexPath *)p {
     [t deselectRowAtIndexPath:p animated:MCMotionEnabled()];
     __weak MCSettingsController *w = self;
@@ -174,9 +185,9 @@ static NSString *MCCacheSize(unsigned long long bytes) {
         }];
     } else if (p.section == 1 && p.row == 4) {
         [self.navigationController pushViewController:[MCSourcesController new] animated:YES];
-    } else if (p.section == 2 && p.row == 1)
+    } else if (p.section == 3 && p.row == 1)
         MCMessage(self, @"使用协议", MCUsageAgreementText);
-    else if (p.section == 2)
+    else if (p.section == 3)
         MCMessage(self, @"暮雨音乐",
                   @"iOS 6 兼容分支 · ARMv7\n本地音乐 · 网易云音乐\n\n"
                   @"开源组件：FLAC（BSD）、curl、Mbed TLS（Apache 2.0）。完整许可证随应用提供。");

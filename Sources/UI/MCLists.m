@@ -8,7 +8,9 @@
 #import "MCPlayer.h"
 #import "MCPlaybackButton.h"
 #import "MCMotion.h"
+#import "MCMaterialControls.h"
 #import "MCNowPlayingLayout.h"
+#import "MCDiscoverLayout.h"
 #import <QuartzCore/QuartzCore.h>
 #import <objc/runtime.h>
 #include <math.h>
@@ -30,11 +32,11 @@ static NSString *MCTime(double t) {
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGFloat width = self.contentView.bounds.size.width;
-    self.backgroundView.frame = CGRectInset(self.bounds, 8, 3);
-    self.selectedBackgroundView.frame = CGRectInset(self.bounds, 8, 3);
-    self.imageView.frame = CGRectMake(18, 12, 40, 40);
-    self.textLabel.frame = CGRectMake(68, 12, MAX(40, width - 84), 23);
-    self.detailTextLabel.frame = CGRectMake(68, 36, MAX(40, width - 84), 17);
+    self.backgroundView.frame = self.bounds;
+    self.selectedBackgroundView.frame = self.bounds;
+    self.imageView.frame = CGRectMake(16, 10, 40, 40);
+    self.textLabel.frame = CGRectMake(68, 9, MAX(0, width - 80), 23);
+    self.detailTextLabel.frame = CGRectMake(68, 33, MAX(0, width - 80), 17);
 }
 @end
 
@@ -42,6 +44,9 @@ static NSString *MCTime(double t) {
 @property (nonatomic, copy) NSString *kind;
 @property (nonatomic, copy) NSString *playlistID;
 @property (nonatomic, strong) NSArray *items;
+@property (nonatomic, strong) NSArray *unfilteredItems;
+@property (nonatomic) BOOL searchesLoadedTracks;
+@property (nonatomic) BOOL loadedSearchFailed;
 @property (nonatomic, copy) void (^loader)(MCListController *);
 @property (nonatomic, copy) NSString *query;
 @property (nonatomic) BOOL busy;
@@ -85,7 +90,8 @@ static void MCOpenCatalog(UIViewController *controller, NSDictionary *item, NSSt
                 UIButton *b = MCTextButton();
                 [b setTitle:[NSString stringWithFormat:@"%lu 张专辑 →", (unsigned long)albums.count]
                     forState:UIControlStateNormal];
-                b.frame = CGRectMake(0, 0, 320, 48);
+                b.frame = CGRectMake(0, 0, w.tableView.bounds.size.width, 48);
+                b.autoresizingMask = UIViewAutoresizingFlexibleWidth;
                 [b addTarget:w
                               action:@selector(showArtistAlbums:)
                     forControlEvents:UIControlEventTouchUpInside];
@@ -216,7 +222,7 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.items = @[];
-    self.tableView.rowHeight = 64;
+    self.tableView.rowHeight = 60;
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     self.tableView.contentInset = UIEdgeInsetsMake(0, 0, 52, 0);
     self.tableView.scrollIndicatorInsets = UIEdgeInsetsMake(0, 0, 52, 0);
@@ -247,7 +253,7 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
                                                      name:MCPlayerDidChangeNotification
                                                    object:nil];
     }
-    if ([self.kind isEqual:@"local"] || [self.kind isEqual:@"search"])
+    if ([self.kind isEqual:@"local"] || [self.kind isEqual:@"search"] || self.searchesLoadedTracks)
         [self setupSearch];
     if ([self.kind isEqual:@"playlists"] && [self.title isEqual:@"发现"]) {
         UIButton *daily = MCTextButton();
@@ -302,7 +308,7 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
     self.tableView.backgroundColor = t.background;
     [t applyToNavigationBar:self.navigationController.navigationBar];
     [t applyToSearchBar:self.search];
-    if (self.search) self.tableView.tableHeaderView.backgroundColor = t.dark ? t.surface : [UIColor whiteColor];
+    if (self.search) self.tableView.tableHeaderView.backgroundColor = t.surface;
     [t applyToSegmentedControl:self.categories];
     self.status.textColor = t.muted;
     self.pullHint.textColor = t.muted;
@@ -310,17 +316,19 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
     [self.tableView reloadData];
 }
 - (void)setupSearch {
+    CGFloat width = self.tableView.bounds.size.width;
     UIView *header =
-        [[UIView alloc] initWithFrame:CGRectMake(0, 0, 320, [self.kind isEqual:@"search"] ? 108 : 56)];
+        [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, [self.kind isEqual:@"search"] ? 108 : 56)];
     header.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-    self.search = [[UISearchBar alloc] initWithFrame:CGRectMake(0, 0, 320, 56)];
+    self.search = [[UISearchBar alloc] initWithFrame:CGRectMake(0, 0, width, 56)];
     self.search.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-    self.search.placeholder = [self.kind isEqual:@"local"] ? @"搜索本地标题、歌手、专辑" : @"搜索网易云音乐";
+    self.search.placeholder = self.searchesLoadedTracks ? @"搜索喜欢的歌曲、歌手、专辑"
+        : [self.kind isEqual:@"local"] ? @"搜索本地标题、歌手、专辑" : @"搜索网易云音乐";
     self.search.delegate = self;
     [header addSubview:self.search];
     if ([self.kind isEqual:@"search"]) {
         self.categories = [[UISegmentedControl alloc] initWithItems:@[ @"歌曲", @"歌手", @"专辑", @"歌单" ]];
-        self.categories.frame = CGRectMake(12, 56, 296, 44);
+        self.categories.frame = CGRectMake(12, 56, width - 24, 44);
         self.categories.autoresizingMask = UIViewAutoresizingFlexibleWidth;
         self.categories.selectedSegmentIndex = 0;
         [self.categories addTarget:self
@@ -340,6 +348,7 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
 - (void)searchBarSearchButtonClicked:(UISearchBar *)bar {
     [bar resignFirstResponder];
     self.query = [bar.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (self.searchesLoadedTracks) { [self applyLoadedSearch]; return; }
     self.offset = 0;
     self.more = NO;
     self.items = @[];
@@ -347,47 +356,89 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
     [self reload];
 }
 - (void)searchBar:(UISearchBar *)bar textDidChange:(NSString *)text {
+    if (self.searchesLoadedTracks) {
+        self.query = [text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(applyLoadedSearch) object:nil];
+        [self performSelector:@selector(applyLoadedSearch) withObject:nil afterDelay:.15];
+        return;
+    }
     if ([self.kind isEqual:@"local"]) {
         self.query = text;
         [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(reload) object:nil];
         [self performSelector:@selector(reload) withObject:nil afterDelay:.25];
     }
 }
+- (NSArray *)filteredLoadedItems {
+    if (!self.query.length) return self.unfilteredItems ?: @[];
+    NSArray *words = [self.query componentsSeparatedByCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    NSMutableArray *found = [NSMutableArray array];
+    for (NSDictionary *track in self.unfilteredItems) {
+        NSString *text = [NSString stringWithFormat:@"%@ %@ %@", MCS(track[@"title"]), MCS(track[@"artist"]), MCS(track[@"album"])];
+        BOOL matches = YES;
+        for (NSString *word in words)
+            if (word.length && [text rangeOfString:word options:NSCaseInsensitiveSearch | NSDiacriticInsensitiveSearch].location == NSNotFound) { matches = NO; break; }
+        if (matches) [found addObject:track];
+    }
+    return found;
+}
+- (void)applyLoadedSearch {
+    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(applyLoadedSearch) object:nil];
+    self.items = [self filteredLoadedItems];
+    [self.tableView reloadData];
+    if (!self.busy && !self.loginRequired && !self.loadedSearchFailed) {
+        NSString *text = self.query.length
+            ? [NSString stringWithFormat:@"找到 %lu / %lu 首", (unsigned long)self.items.count, (unsigned long)self.unfilteredItems.count]
+            : [NSString stringWithFormat:@"按添加时间 · 新到旧 · %lu 首", (unsigned long)self.items.count];
+        [self footer:self.catalogNotice ?: text retry:self.catalogNotice.length > 0];
+    }
+}
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    [self layoutFooter];
+}
+- (void)layoutFooter {
+    UIView *footer = self.tableView.tableFooterView;
+    if (!footer || !self.status) return;
+    CGFloat width = self.tableView.bounds.size.width, inner = MIN(560, width - 40);
+    CGFloat textHeight = MAX(32, ceil([self.status sizeThatFits:CGSizeMake(inner, CGFLOAT_MAX)].height));
+    self.status.frame = CGRectMake((width - inner) / 2, self.busy ? 40 : 12, inner, textHeight);
+    UIView *spinner = [footer viewWithTag:6061];
+    spinner.frame = CGRectMake((width - 20) / 2, 12, 20, 20);
+    UIView *retry = [footer viewWithTag:6062];
+    retry.frame = CGRectMake((width - 180) / 2, CGRectGetMaxY(self.status.frame) + 8, 180, 44);
+    CGFloat height = CGRectGetMaxY(self.status.frame) + (retry ? 64 : 16);
+    if (footer.frame.size.width != width || footer.frame.size.height != height) {
+        footer.frame = CGRectMake(0, 0, width, height);
+        self.tableView.tableFooterView = footer;
+    }
+}
 - (void)footer:(NSString *)text retry:(BOOL)retry {
-    UIView *f = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 320, retry ? 128 : 82)];
-    self.status = [[UILabel alloc] initWithFrame:CGRectMake(20, 8, 280, 64)];
+    UIView *footer = [UIView new];
+    self.status = [UILabel new];
     self.status.backgroundColor = [UIColor clearColor];
-    self.status.opaque = NO;
-    self.status.autoresizingMask = UIViewAutoresizingFlexibleWidth;
     self.status.textAlignment = NSTextAlignmentCenter;
     self.status.numberOfLines = 0;
-    self.status.font = [UIFont systemFontOfSize:14];
+    self.status.font = [[MCTheme sharedTheme] fontForRole:MCTypeCaption];
     self.status.textColor = [MCTheme sharedTheme].muted;
     self.status.text = text;
-    [f addSubview:self.status];
+    [footer addSubview:self.status];
     if (self.busy) {
-        UIImageView *mark = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"AppPlaceholder"]];
-        mark.frame = CGRectMake(132, 8, 32, 32);
-        mark.layer.cornerRadius = 8;
-        mark.clipsToBounds = YES;
-        [f addSubview:mark];
         UIActivityIndicatorView *spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
+        spinner.tag = 6061;
         spinner.color = [MCTheme sharedTheme].primary;
-        spinner.frame = CGRectMake(174, 14, 20, 20);
         [spinner startAnimating];
-        [f addSubview:spinner];
-        self.status.frame = CGRectMake(20, 44, 280, 32);
+        [footer addSubview:spinner];
     }
     if (retry) {
-        UIButton *b = MCTextButton();
-        b.frame = CGRectMake(70, 76, 180, 44);
-        [b setTitle:self.loginRequired ? @"登录" : self.more ? @"加载更多" : @"重试" forState:UIControlStateNormal];
-        [b addTarget:self
-                      action:self.loginRequired ? @selector(loginTapped) : self.more ? @selector(loadMore) : @selector(reload)
+        UIButton *button = MCTextButton();
+        button.tag = 6062;
+        [button setTitle:self.loginRequired ? @"登录" : self.more ? @"加载更多" : @"重试" forState:UIControlStateNormal];
+        [button addTarget:self action:self.loginRequired ? @selector(loginTapped) : self.more ? @selector(loadMore) : @selector(reload)
             forControlEvents:UIControlEventTouchUpInside];
-        [f addSubview:b];
+        [footer addSubview:button];
     }
-    self.tableView.tableFooterView = f;
+    self.tableView.tableFooterView = footer;
+    [self layoutFooter];
 }
 - (void)reload {
     if (self.busy) {
@@ -452,6 +503,7 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
 }
 - (void)received:(NSArray *)items error:(NSError *)error {
     self.busy = NO;
+    if (self.searchesLoadedTracks) self.loadedSearchFailed = error != nil;
     self.loginRequired = error.code == 301 && [error.domain isEqual:@"MCAPIErrorDomain"];
     if (self.pendingReload) {
         self.pendingReload = NO;
@@ -459,8 +511,13 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
         return;
     }
     self.pullHint.text = @"下拉刷新";
-    if (!error)
+    if (!error) {
         self.items = [items isKindOfClass:[NSArray class]] ? items : @[];
+        if (self.searchesLoadedTracks) {
+            self.unfilteredItems = self.items;
+            self.items = [self filteredLoadedItems];
+        }
+    }
     [self.tableView reloadData];
     [self footer:error.localizedDescription ?: self.catalogNotice
                      ?: (self.more ? @"还有更多搜索结果"
@@ -468,6 +525,7 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
                              ? [NSString stringWithFormat:@"%lu 项", (unsigned long)self.items.count]
                              : @"这里还没有内容。")
            retry:error != nil || self.more || self.catalogNotice.length > 0];
+    if (self.searchesLoadedTracks && !error) [self applyLoadedSearch];
 }
 - (void)receivedCatalog:(NSDictionary *)result error:(NSError *)error {
     NSArray *tracks = [result isKindOfClass:[NSDictionary class]] ? result[@"tracks"] : nil;
@@ -527,13 +585,12 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
     MCTheme *theme = [MCTheme sharedTheme];
     c.backgroundColor = [UIColor clearColor];
     UIView *card = [UIView new];
-    card.backgroundColor = theme.surface;
-    card.layer.cornerRadius = 14;
+    card.backgroundColor = theme.background;
     c.backgroundView = card;
     c.textLabel.backgroundColor = c.detailTextLabel.backgroundColor = [UIColor clearColor];
-    c.textLabel.font = [UIFont systemFontOfSize:16];
+    c.textLabel.font = [theme fontForRole:MCTypeBody];
     c.textLabel.textColor = theme.text;
-    c.detailTextLabel.font = [UIFont systemFontOfSize:12];
+    c.detailTextLabel.font = [theme fontForRole:MCTypeCaption];
     c.detailTextLabel.textColor = theme.muted;
     c.textLabel.text = MCS(d[@"title"]);
     BOOL track = [self isTrackKind];
@@ -557,8 +614,7 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
     c.imageView.clipsToBounds = YES;
     [[MCArtwork sharedCache] load:MCS(d[@"artwork"]) into:c.imageView];
     UIView *selected = [UIView new];
-    selected.backgroundColor = theme.background;
-    selected.layer.cornerRadius = 14;
+    selected.backgroundColor = theme.surfaceContainer;
     c.selectedBackgroundView = selected;
     c.accessibilityLabel = [NSString stringWithFormat:@"%@，%@", c.textLabel.text, c.detailTextLabel.text];
     return c;
@@ -684,6 +740,35 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
 
 @end
 
+static MCListController *MCLibraryList(NSInteger row) {
+    MCListController *v = MCNewList(
+        @[ @"本地歌曲", @"本地收藏", @"最近播放", @"本地歌单", @"我的网易云歌单" ][row],
+        row == 0   ? @"local"
+        : row == 3 ? @"libraryPlaylists"
+        : row == 4 ? @"playlists"
+                   : @"libraryTracks",
+        ^(MCListController *s) {
+            __weak MCListController *w = s;
+            void (^done)(NSArray *) = ^(NSArray *a) {
+                [w received:a error:nil];
+            };
+            MCLibrary *lib = [MCLibrary sharedLibrary];
+            if (row == 0)
+                [lib tracksMatching:s.query ?: @"" completion:done];
+            else if (row == 1)
+                [lib favoriteTracks:done];
+            else if (row == 2)
+                [lib recentTracks:done];
+            else if (row == 3)
+                [lib playlists:done];
+            else
+                [[MCAPI sharedAPI] userPlaylists:^(id r, NSError *e) {
+                    [w received:r error:e];
+                }];
+        });
+    return v;
+}
+
 @interface MCLibraryController : MCFlatTableController
 @property (nonatomic, strong) UILabel *instructions;
 @end
@@ -795,36 +880,330 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
         return;
     }
     NSInteger row = p.row;
-    MCListController *v = MCNewList(
-        @[ @"本地歌曲", @"本地收藏", @"最近播放", @"本地歌单", @"我的网易云歌单" ][row],
-        row == 0   ? @"local"
-        : row == 3 ? @"libraryPlaylists"
-        : row == 4 ? @"playlists"
-                   : @"libraryTracks",
-        ^(MCListController *s) {
-            __weak MCListController *w = s;
-            void (^done)(NSArray *) = ^(NSArray *a) {
-                [w received:a error:nil];
-            };
-            MCLibrary *lib = [MCLibrary sharedLibrary];
-            if (row == 0)
-                [lib tracksMatching:s.query ?: @"" completion:done];
-            else if (row == 1)
-                [lib favoriteTracks:done];
-            else if (row == 2)
-                [lib recentTracks:done];
-            else if (row == 3)
-                [lib playlists:done];
-            else
-                [[MCAPI sharedAPI] userPlaylists:^(id r, NSError *e) {
-                    [w received:r error:e];
-                }];
-        });
+    MCListController *v = MCLibraryList(row);
     if (row == 3)
         v.navigationItem.rightBarButtonItem =
             [[UIBarButtonItem alloc] initWithTitle:@"新建" style:UIBarButtonItemStylePlain
                                          target:self action:@selector(newPlaylist)];
     [self.navigationController pushViewController:v animated:YES];
+}
+@end
+
+@interface MCDiscoverController : MCListController
+@property (nonatomic, strong) UIView *discoverHeader;
+@property (nonatomic, strong) MCMaterialCard *dailyCard;
+@property (nonatomic, strong) UIButton *dailyOpen;
+@property (nonatomic, strong) UIImageView *dailyCover;
+@property (nonatomic, strong) UILabel *dailyTitle, *dailySubtitle, *songsHeading, *songsHint;
+@property (nonatomic, strong) MCMaterialButton *dailyPlay;
+@property (nonatomic, strong) NSArray *shortcuts, *recommendedPlaylists, *recentItems, *dailyTracks;
+@property (nonatomic, strong) UISegmentedControl *shelfMode;
+@property (nonatomic, strong) UIScrollView *shelf;
+@property (nonatomic, strong) UILabel *shelfEmpty;
+@property (nonatomic, strong) UIButton *shelfMore;
+@property (nonatomic, copy) NSString *accountIdentity;
+@property (nonatomic) NSUInteger discoverGeneration;
+@property (nonatomic) CGFloat shelfTileWidth;
+@property (nonatomic) BOOL hasDaily, hasTasteRecommendations, recommendationsSettled;
+@end
+@implementation MCDiscoverController
+- (id)initWithStyle:(UITableViewStyle)style {
+    if ((self = [super initWithStyle:style])) { self.title = @"发现"; self.kind = @"tracks"; }
+    return self;
+}
+- (UILabel *)heading:(NSString *)text role:(MCTypeRole)role {
+    UILabel *label = [UILabel new];
+    label.text = text;
+    label.font = [[MCTheme sharedTheme] fontForRole:role];
+    label.backgroundColor = [UIColor clearColor];
+    label.lineBreakMode = NSLineBreakByTruncatingTail;
+    [self.discoverHeader addSubview:label];
+    return label;
+}
+- (UIBarButtonItem *)navigationIcon:(MCPlaybackIcon)icon label:(NSString *)label action:(SEL)action {
+    MCPlaybackButton *button = [[MCPlaybackButton alloc] initWithFrame:CGRectMake(0, 0, 44, 44)];
+    button.icon = icon;
+    button.ink = [MCTheme sharedTheme].text;
+    button.accessibilityLabel = label;
+    [button addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
+    return [[UIBarButtonItem alloc] initWithCustomView:button];
+}
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.navigationItem.leftBarButtonItem = [self navigationIcon:MCPlaybackIconAccount label:@"账号" action:@selector(loginTapped)];
+    self.navigationItem.rightBarButtonItem = [self navigationIcon:MCPlaybackIconSettings label:@"设置" action:@selector(discoverSettings)];
+    self.discoverHeader = [UIView new];
+    self.dailyCard = [MCMaterialCard new];
+    self.dailyCard.emphasized = YES;
+    [self.discoverHeader addSubview:self.dailyCard];
+    // The card opens the catalog; the separate play button keeps its action.
+    self.dailyOpen = [UIButton buttonWithType:UIButtonTypeCustom];
+    self.dailyOpen.accessibilityLabel = @"打开每日推荐";
+    self.dailyOpen.accessibilityHint = @"查看每日推荐歌曲列表";
+    [self.dailyOpen addTarget:self action:@selector(dailyTapped) forControlEvents:UIControlEventTouchUpInside];
+    [self.dailyCard addSubview:self.dailyOpen];
+    self.dailyCover = [UIImageView new];
+    self.dailyCover.contentMode = UIViewContentModeScaleAspectFill;
+    self.dailyCover.clipsToBounds = YES;
+    self.dailyCover.layer.cornerRadius = [MCTheme sharedTheme].smallRadius;
+    [self.dailyCard addSubview:self.dailyCover];
+    self.dailyTitle = [self heading:@"每日推荐" role:MCTypeTitle];
+    self.dailySubtitle = [self heading:@"为今天选一首好歌" role:MCTypeCaption];
+    self.dailySubtitle.numberOfLines = 2;
+    [self.dailyCard addSubview:self.dailyTitle];
+    [self.dailyCard addSubview:self.dailySubtitle];
+    self.dailyPlay = [[MCMaterialButton alloc] initWithTitle:@"播放" icon:MCPlaybackIconPlay filled:YES];
+    [self.dailyPlay addTarget:self action:@selector(playDaily) forControlEvents:UIControlEventTouchUpInside];
+    [self.dailyCard addSubview:self.dailyPlay];
+    NSArray *titles = @[@"最近播放", @"喜欢的音乐", @"本地音乐", @"网易云歌单"];
+    NSArray *icons = @[@(MCPlaybackIconRecent), @(MCPlaybackIconFavorite), @(MCPlaybackIconLocal), @(MCPlaybackIconPlaylist)];
+    NSMutableArray *buttons = [NSMutableArray array];
+    for (NSUInteger i = 0; i < titles.count; i++) {
+        MCMaterialButton *button = [[MCMaterialButton alloc] initWithTitle:titles[i] icon:[icons[i] unsignedIntegerValue] filled:NO];
+        button.vertical = YES;
+        button.tag = i;
+        if (i == 1) button.accessibilityLabel = @"网易云喜欢的音乐";
+        [button addTarget:self action:@selector(openShortcut:) forControlEvents:UIControlEventTouchUpInside];
+        [self.discoverHeader addSubview:button];
+        [buttons addObject:button];
+    }
+    self.shortcuts = buttons;
+    self.shelfMode = [[MCMaterialSegmentedControl alloc] initWithItems:@[@"推荐歌单", @"最近播放"]];
+    self.shelfMode.selectedSegmentIndex = 0;
+    [self.shelfMode addTarget:self action:@selector(shelfChanged) forControlEvents:UIControlEventValueChanged];
+    [self.discoverHeader addSubview:self.shelfMode];
+    self.shelfMore = MCTextButton();
+    [self.shelfMore setTitle:@"查看全部" forState:UIControlStateNormal];
+    [self.shelfMore addTarget:self action:@selector(openShelf) forControlEvents:UIControlEventTouchUpInside];
+    [self.discoverHeader addSubview:self.shelfMore];
+    self.shelf = [UIScrollView new];
+    self.shelf.showsHorizontalScrollIndicator = NO;
+    self.shelf.directionalLockEnabled = YES;
+    [self.discoverHeader addSubview:self.shelf];
+    self.shelfEmpty = [self heading:@"正在读取歌单…" role:MCTypeCaption];
+    self.shelfEmpty.numberOfLines = 2;
+    [self.shelf addSubview:self.shelfEmpty];
+    self.songsHeading = [self heading:@"根据你喜欢的歌曲推荐" role:MCTypeSection];
+    self.songsHint = [self heading:@"" role:MCTypeCaption];
+    self.tableView.tableHeaderView = self.discoverHeader;
+    [self updateDailyCard];
+    [self theme];
+}
+- (NSString *)currentAccount {
+    MCAPI *api = [MCAPI sharedAPI];
+    return [NSString stringWithFormat:@"%d:%@", api.loggedIn, MCS(api.profile[@"userId"])];
+}
+- (void)viewWillAppear:(BOOL)animated {
+    BOOL changed = ![self.accountIdentity isEqual:[self currentAccount]];
+    BOOL retryLogin = self.loginRequired && [MCAPI sharedAPI].loggedIn;
+    self.loginRequired = NO;
+    [super viewWillAppear:animated];
+    if (changed || retryLogin) { self.busy = NO; [self reload]; }
+}
+- (void)theme {
+    [super theme];
+    MCTheme *t = [MCTheme sharedTheme];
+    self.dailyTitle.textColor = self.dailySubtitle.textColor = t.onPrimaryContainer;
+    self.songsHeading.textColor = t.text;
+    self.songsHint.textColor = t.muted;
+    self.shelfEmpty.textColor = t.muted;
+    [t applyToSegmentedControl:self.shelfMode];
+    for (UIBarButtonItem *item in @[self.navigationItem.leftBarButtonItem ?: [UIBarButtonItem new],
+                                   self.navigationItem.rightBarButtonItem ?: [UIBarButtonItem new]])
+        if ([item.customView isKindOfClass:[MCPlaybackButton class]])
+            ((MCPlaybackButton *)item.customView).ink = t.text;
+}
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    CGFloat width = self.tableView.bounds.size.width;
+    MCDiscoverLayout l = MCDiscoverMakeLayout(width);
+    self.dailyCard.frame = CGRectMake(l.hero.x, l.hero.y, l.hero.width, l.hero.height);
+    self.dailyOpen.frame = self.dailyCard.bounds;
+    CGFloat cover = l.hero.height - 24, textLeft = cover + 24;
+    self.dailyCover.frame = CGRectMake(12, 12, cover, cover);
+    self.dailyTitle.frame = CGRectMake(textLeft, 10, l.hero.width - textLeft - 12, 28);
+    self.dailySubtitle.frame = CGRectMake(textLeft, 37, l.hero.width - textLeft - 12, 30);
+    self.dailyPlay.frame = CGRectMake(textLeft, l.hero.height - 52, 100, 44);
+    for (NSUInteger i=0;i<self.shortcuts.count;i++) {
+        MCPlayerRect r = l.shortcuts[i];
+        [self.shortcuts[i] setFrame:CGRectMake(r.x, r.y, r.width, r.height)];
+    }
+    self.shelfMode.frame = CGRectMake(l.shelfMode.x, l.shelfMode.y, l.shelfMode.width, l.shelfMode.height);
+    self.shelfMore.frame = CGRectMake(l.shelfMore.x, l.shelfMore.y, l.shelfMore.width, l.shelfMore.height);
+    self.shelf.frame = CGRectMake(l.shelf.x, l.shelf.y, l.shelf.width, l.shelf.height);
+    self.shelfEmpty.frame = CGRectMake(0, 12, l.shelf.width, 64);
+    if (self.shelfTileWidth != l.tileWidth) { self.shelfTileWidth = l.tileWidth; [self rebuildShelf]; }
+    self.songsHeading.frame = CGRectMake(l.heading.x, l.heading.y, l.heading.width, 24);
+    self.songsHint.frame = CGRectMake(l.heading.x, l.heading.y + 24, l.heading.width, 16);
+    if (self.discoverHeader.frame.size.width != width || self.discoverHeader.frame.size.height != l.height) {
+        self.discoverHeader.frame = CGRectMake(0, 0, width, l.height);
+        self.tableView.tableHeaderView = self.discoverHeader;
+    }
+}
+- (NSArray *)shelfItems {
+    return self.shelfMode.selectedSegmentIndex == 1 ? self.recentItems : self.recommendedPlaylists;
+}
+- (void)rebuildShelf {
+    for (UIView *view in [self.shelf.subviews copy])
+        if ([view isKindOfClass:[MCCatalogTile class]]) [view removeFromSuperview];
+    NSArray *items = [self shelfItems];
+    CGFloat side = self.shelfTileWidth ?: 96;
+    for (NSUInteger i=0;i<MIN((NSUInteger)8, items.count);i++) {
+        MCCatalogTile *tile = [[MCCatalogTile alloc] initWithFrame:CGRectMake(i * (side + 12), 0, side, side + 38)];
+        tile.tag = i;
+        [tile showItem:items[i]];
+        [tile addTarget:self action:@selector(openTile:) forControlEvents:UIControlEventTouchUpInside];
+        [tile addGestureRecognizer:[[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(tileActions:)]];
+        [self.shelf addSubview:tile];
+    }
+    self.shelfEmpty.hidden = items.count > 0;
+    self.shelf.contentSize = CGSizeMake(MAX(0, MIN((NSUInteger)8, items.count) * (side + 12) - 12), side + 38);
+}
+- (void)shelfChanged {
+    self.shelf.contentOffset = CGPointZero;
+    self.shelfEmpty.text = self.shelfMode.selectedSegmentIndex == 1 ? @"播放过的歌曲会出现在这里。" : @"暂无推荐歌单，可下拉刷新。";
+    [self rebuildShelf];
+}
+- (void)updateDailyCard {
+    MCAPI *api = [MCAPI sharedAPI];
+    self.dailySubtitle.text = api.loggedIn ? (self.hasDaily ? @"为你挑选，随时开听" : @"发现今天的好音乐") : @"登录网易云，获取每日推荐";
+    [self.dailyPlay setTitle:api.loggedIn ? @"播放" : @"登录" forState:UIControlStateNormal];
+    self.dailyPlay.accessibilityLabel = api.loggedIn ? @"播放每日推荐" : @"登录获取每日推荐";
+    self.songsHeading.text = self.hasTasteRecommendations ? @"根据你喜欢的歌曲推荐" : @"最近播放";
+    self.songsHint.text = !api.loggedIn ? @"登录后获取个性化推荐"
+        : self.hasTasteRecommendations ? @"网易云 · 为你推荐" : @"推荐暂不可用，先听最近播放";
+    NSDictionary *item = self.hasDaily ? self.dailyTracks.firstObject : self.recommendedPlaylists.firstObject;
+    [[MCArtwork sharedCache] load:MCS(item[@"artwork"]) into:self.dailyCover];
+}
+- (void)reload {
+    if (self.busy) return;
+    self.busy = YES;
+    NSString *identity = [self currentAccount];
+    if (![self.accountIdentity isEqual:identity]) { self.items = @[]; self.hasDaily = NO; self.hasTasteRecommendations = NO; self.dailyTracks = @[]; }
+    self.accountIdentity = identity;
+    self.recommendationsSettled = NO;
+    NSUInteger generation = ++self.discoverGeneration;
+    BOOL loggedIn = [MCAPI sharedAPI].loggedIn;
+    __weak MCDiscoverController *weakSelf = self;
+    [self footer:@"正在读取推荐…" retry:NO];
+    [[MCLibrary sharedLibrary] recentTracks:^(NSArray *tracks) {
+        MCDiscoverController *s = weakSelf;
+        if (!s || generation != s.discoverGeneration) return;
+        s.recentItems = tracks ?: @[];
+        if (!loggedIn || (s.recommendationsSettled && !s.hasTasteRecommendations)) {
+            s.items = s.recentItems;
+            if (!loggedIn) {
+                s.busy = NO;
+                s.loginRequired = YES;
+                [s footer:@"登录后获取个性化推荐，本地音乐可随时播放。" retry:YES];
+            }
+            [s.tableView reloadData];
+            [s updateDailyCard];
+        }
+        [s rebuildShelf];
+    }];
+    [[MCAPI sharedAPI] discover:^(id result, NSError *error) {
+        MCDiscoverController *s = weakSelf;
+        if (!s || generation != s.discoverGeneration) return;
+        if (!error) s.recommendedPlaylists = [result isKindOfClass:[NSArray class]] ? result : @[];
+        if (s.shelfMode.selectedSegmentIndex == 0)
+            s.shelfEmpty.text = error ? @"歌单暂时无法加载，下拉重试。" : @"暂无推荐歌单。";
+        [s rebuildShelf];
+        [s updateDailyCard];
+    }];
+    if (loggedIn) {
+        [[MCAPI sharedAPI] dailyRecommendations:^(id result, NSError *error) {
+            MCDiscoverController *s = weakSelf;
+            if (!s || generation != s.discoverGeneration) return;
+            s.dailyTracks = !error && [result[@"tracks"] isKindOfClass:[NSArray class]] ? result[@"tracks"] : @[];
+            s.hasDaily = s.dailyTracks.count > 0;
+            [s updateDailyCard];
+        }];
+        [[MCAPI sharedAPI] tasteRecommendations:^(id result, NSError *error) {
+            MCDiscoverController *s = weakSelf;
+            if (!s || generation != s.discoverGeneration) return;
+            s.recommendationsSettled = YES;
+            s.hasTasteRecommendations = !error && [result[@"tracks"] count] > 0;
+            if (s.hasTasteRecommendations) [s receivedCatalog:result error:nil];
+            else {
+                s.items = s.recentItems ?: @[];
+                [s received:s.items error:error];
+                if (!error) [s footer:@"网易云暂无个性化推荐，先听最近播放。" retry:YES];
+            }
+            [s updateDailyCard];
+        }];
+    }
+}
+- (void)libraryChanged {
+    __weak MCDiscoverController *weakSelf = self;
+    [[MCLibrary sharedLibrary] recentTracks:^(NSArray *tracks) {
+        MCDiscoverController *s = weakSelf;
+        if (!s) return;
+        s.recentItems = tracks ?: @[];
+        if (![MCAPI sharedAPI].loggedIn || (s.recommendationsSettled && !s.hasTasteRecommendations)) {
+            s.items = s.recentItems;
+            [s.tableView reloadData];
+        }
+        if (s.shelfMode.selectedSegmentIndex == 1) [s rebuildShelf];
+    }];
+}
+- (void)discoverSettings { [self.navigationController pushViewController:[MCSettingsController new] animated:YES]; }
+- (void)playDaily {
+    if (![MCAPI sharedAPI].loggedIn) { [self loginTapped]; return; }
+    if (self.hasDaily && self.dailyTracks.count) {
+        [[MCPlayer sharedPlayer] playTracks:self.dailyTracks index:0];
+        MCPushNow(self);
+    } else [self dailyTapped];
+}
+- (void)openShortcut:(UIButton *)sender {
+    MCListController *list;
+    if (sender.tag == 1) {
+        list = MCNewList(@"网易云喜欢的音乐", @"tracks", ^(MCListController *target) {
+            __weak MCListController *w = target;
+            [[MCAPI sharedAPI] likedTracks:^(id result, NSError *error) {
+                [w receivedCatalog:result error:error];
+            }];
+        });
+        list.searchesLoadedTracks = YES;
+    } else {
+        NSInteger row = sender.tag == 0 ? 2 : sender.tag == 2 ? 0 : 4;
+        list = MCLibraryList(row);
+        if (sender.tag == 3) list.title = @"网易云歌单";
+    }
+    [self.navigationController pushViewController:list animated:YES];
+}
+- (void)openShelf {
+    MCListController *list;
+    if (self.shelfMode.selectedSegmentIndex == 1) list = MCLibraryList(2);
+    else list = MCNewList(@"推荐歌单", @"playlists", ^(MCListController *target) {
+        __weak MCListController *w = target;
+        [[MCAPI sharedAPI] discover:^(id result, NSError *error) { [w received:result error:error]; }];
+    });
+    [self.navigationController pushViewController:list animated:YES];
+}
+- (void)openTile:(MCCatalogTile *)tile {
+    NSArray *items = [self shelfItems];
+    if ((NSUInteger)tile.tag >= items.count) return;
+    if (self.shelfMode.selectedSegmentIndex == 1) {
+        [[MCPlayer sharedPlayer] playTracks:items index:tile.tag];
+        MCPushNow(self);
+    } else MCOpenCatalog(self, items[tile.tag], @"playlists");
+}
+- (void)tileActions:(UILongPressGestureRecognizer *)gesture {
+    if (gesture.state != UIGestureRecognizerStateBegan) return;
+    NSArray *items = [self shelfItems];
+    NSUInteger index = gesture.view.tag;
+    if (index >= items.count) return;
+    if (self.shelfMode.selectedSegmentIndex == 1) MCShowTrackActions(self, items[index], nil);
+    else {
+        NSDictionary *playlist = items[index];
+        __weak MCDiscoverController *weakSelf = self;
+        MCChoose(self, MCS(playlist[@"title"]), @[@"打开歌单", @"收藏到网易云"], ^(NSInteger choice) {
+            if (!weakSelf) return;
+            if (choice == 0) MCOpenCatalog(weakSelf, playlist, @"playlists");
+            else MCSubscribeCloudPlaylist(weakSelf, playlist);
+        });
+    }
 }
 @end
 
@@ -971,22 +1350,7 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
 @implementation MCRootController
 - (void)viewDidLoad {
     [super viewDidLoad];
-    MCListController *discover = MCNewList(@"发现", @"playlists", ^(MCListController *s) {
-        __weak MCListController *w = s;
-        [[MCAPI sharedAPI] discover:^(id result, NSError *error) {
-            [w received:result error:error];
-        }];
-    });
-    discover.navigationItem.rightBarButtonItem =
-        [[UIBarButtonItem alloc] initWithTitle:@"设置"
-                                         style:UIBarButtonItemStylePlain
-                                        target:self
-                                        action:@selector(settings)];
-    discover.navigationItem.leftBarButtonItem =
-        [[UIBarButtonItem alloc] initWithTitle:@"账号"
-                                         style:UIBarButtonItemStylePlain
-                                        target:self
-                                        action:@selector(account)];
+    MCDiscoverController *discover = [[MCDiscoverController alloc] initWithStyle:UITableViewStylePlain];
     MCListController *search = MCNewList(@"搜索", @"search", nil);
     MCLibraryController *library = [[MCLibraryController alloc] initWithStyle:UITableViewStyleGrouped];
     NSArray *roots = @[ discover, search, library ];
@@ -1005,6 +1369,7 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
     self.miniTray = [UIView new];
     self.miniTray.tag = 8080;
     self.miniTray.clipsToBounds = YES;
+    self.miniTray.layer.cornerRadius = 16;
     [self.view addSubview:self.miniTray];
     self.miniCarousel = [UIView new];
     self.miniCarousel.clipsToBounds = YES;
@@ -1119,7 +1484,8 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
     CGFloat w = self.view.bounds.size.width;
     MCPlayerRect tray = MCMiniPlayerMakeFrame(w, self.view.bounds.size.height,
                                             self.tabBar.frame.origin.y, tabBarHidden);
-    self.miniTray.frame = CGRectMake(tray.x, tray.y, tray.width, tray.height);
+    self.miniTray.frame = CGRectMake(tray.x + 8, tray.y, tray.width - 16, tray.height);
+    w = self.miniTray.bounds.size.width;
     self.miniCarousel.frame = CGRectMake(0, 2, w - 132, 50);
     CGFloat panelWidth = self.miniCarousel.bounds.size.width;
     self.mini.bounds = self.miniNextPreview.bounds = self.miniPreviousPreview.bounds = CGRectMake(0, 0, panelWidth, 50);
@@ -1139,18 +1505,20 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
 - (void)update {
     MCPlayer *p = [MCPlayer sharedPlayer];
     MCTheme *t = [MCTheme sharedTheme];
-    self.miniTray.backgroundColor = t.surface;
-    self.miniCarousel.backgroundColor = t.surface;
+    self.view.backgroundColor = t.background;
+    self.miniTray.backgroundColor = t.surfaceContainer;
+    self.miniCarousel.backgroundColor = t.surfaceContainer;
     [self.miniNextPreview applyTheme];
     [self.miniPreviousPreview applyTheme];
-    self.mini.backgroundColor = t.surface;
-    self.toggleButton.backgroundColor = t.surface;
+    self.mini.backgroundColor = t.surfaceContainer;
+    self.toggleButton.backgroundColor = [UIColor clearColor];
     self.miniTitle.textColor = t.text;
     self.miniArtist.textColor = t.muted;
     self.miniCover.backgroundColor = t.background;
-    self.miniBoundary.backgroundColor = [t.muted colorWithAlphaComponent:.18];
+    self.miniBoundary.backgroundColor = t.outline;
     self.miniProgress.backgroundColor = t.primary;
-    self.toggleButton.ink = t.primary;
+    self.toggleButton.fill = t.primary;
+    self.toggleButton.ink = t.onPrimary;
     self.miniPrevious.ink = self.miniNext.ink = t.primary;
     [t applyToTabBar:self.tabBar];
     for (UINavigationController *nav in self.viewControllers) {
@@ -1208,9 +1576,9 @@ void MCShowTrackActions(UIViewController *controller, NSDictionary *track, NSStr
     MCPlayer *player = [MCPlayer sharedPlayer];
     double progress = player.currentTrack && isfinite(player.duration) && player.duration > 0 && isfinite(player.position)
         ? MAX(0, MIN(1, player.position / player.duration)) : 0;
-    CGFloat width = self.miniTray.bounds.size.width * progress;
+    CGFloat width = MAX(0, self.miniTray.bounds.size.width - 24) * progress;
     CGFloat previous = self.miniProgress.frame.size.width;
-    void (^change)(void) = ^{ self.miniProgress.frame = CGRectMake(0, 0, width, 2); };
+    void (^change)(void) = ^{ self.miniProgress.frame = CGRectMake(12, 0, MAX(0, self.miniTray.bounds.size.width - 24) * progress, 2); };
     if (!self.miniTray.hidden && self.miniTray.window && width > previous &&
         width - previous < MAX(1, self.miniTray.bounds.size.width * .08))
         MCAnimate(.45, UIViewAnimationOptionCurveLinear, change);

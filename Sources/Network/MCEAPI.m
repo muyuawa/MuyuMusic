@@ -145,6 +145,8 @@ static NSString *MCHTTPSArtwork(id value) {
     NSMutableDictionary *result = [@{@"id":identifier,@"title":MCString(item[@"name"]),@"artwork":MCHTTPSArtwork(item[@"picUrl"] ?: item[@"coverImgUrl"] ?: item[@"img1v1Url"]),@"subtitle":subtitle} mutableCopy];
     NSString *creatorID = [self identifier:MCDict(item[@"creator"])[@"userId"]];
     if (creatorID) result[@"creatorID"] = creatorID;
+    if ([item[@"specialType"] respondsToSelector:@selector(integerValue)])
+        result[@"specialType"] = @([item[@"specialType"] integerValue]);
     return result;
 }
 + (NSDictionary *)playableURL:(NSDictionary *)entry error:(NSError **)error {
@@ -187,6 +189,6 @@ static NSString *MCHTTPSArtwork(id value) {
 + (BOOL)isAPIHost:(NSString *)host {
     host = [host lowercaseString];
     return [host isEqual:@"music.163.com"] || [host isEqual:@"interface.music.163.com"] ||
-           [host isEqual:@"interface3.music.163.com"];
+           [host isEqual:@"interface3.music.163.com"] || [host isEqual:@"interfacepc.music.163.com"];
 }
 @end

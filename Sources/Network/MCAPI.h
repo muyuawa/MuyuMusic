@@ -10,6 +10,7 @@ typedef void (^MCAPICompletion)(id result, NSError *error);
     completion:(MCAPICompletion)completion;
 - (void)discover:(MCAPICompletion)completion;
 - (void)dailyRecommendations:(MCAPICompletion)completion;
+- (void)tasteRecommendations:(MCAPICompletion)completion;
 /* Playlist/likes return tracks, totalCount, unavailableTrackIDs. No invented
    metadata is substituted when the service omits an ID's details. */
 - (void)playlist:(NSString *)identifier completion:(MCAPICompletion)completion;
@@ -23,6 +24,8 @@ typedef void (^MCAPICompletion)(id result, NSError *error);
 - (void)likeTrack:(NSString *)identifier liked:(BOOL)liked completion:(MCAPICompletion)completion;
 - (void)songURL:(NSString *)identifier quality:(NSString *)quality completion:(MCAPICompletion)completion;
 - (void)lyrics:(NSString *)identifier completion:(MCAPICompletion)completion;
+/* original / translation / romanization are synchronized LRC strings. */
+- (void)lyricVariants:(NSString *)identifier completion:(MCAPICompletion)completion;
 - (void)createLoginKey:(MCAPICompletion)completion;
 - (void)pollLoginKey:(NSString *)key completion:(MCAPICompletion)completion;
 - (void)refreshLogin:(MCAPICompletion)completion;

@@ -13,6 +13,16 @@ int main(void) {
     assert(!MCColorParse(NULL, &c));
     for (unsigned i=0;i<0xFFFFFF;i+=7919) {
         MCColor bg = {(i>>16)/255.0, ((i>>8)&255)/255.0, (i&255)/255.0};
+        for (unsigned mode=0;mode<2;mode++) {
+            MCMaterialPalette p=MCColorMaterialPalette(bg,mode);
+            assert(MCColorContrast(p.text,p.background)>=4.5);
+            assert(MCColorContrast(p.muted,p.container)>=4.5);
+            assert(MCColorContrast(p.muted,p.containerHigh)>=4.5);
+            assert(MCColorContrast(p.primary,p.containerHigh)>=4.5);
+            assert(MCColorContrast(p.primary,p.container)>=4.5);
+            assert(MCColorContrast(p.onPrimary,p.primary)>=4.5);
+            assert(MCColorContrast(p.onContainer,p.primaryContainer)>=4.5);
+        }
         assert(MCColorContrast(bg, MCColorForeground(bg)) >= 4.5);
         MCColor light={1,1,1},dark={36.0/255,44.0/255,60.0/255};
         assert(MCColorContrast(MCColorAccent(bg,false),light)>=4.5);

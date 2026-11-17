@@ -1,7 +1,57 @@
 #import "MCLyrics.h"
 #import <math.h>
+#import <dispatch/dispatch.h>
+
+NSString *const MCLyricsOptionsDidChangeNotification = @"MCLyricsOptionsDidChange";
+static void MCLyricsDefaults(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        [[NSUserDefaults standardUserDefaults] registerDefaults:
+            @{@"lyrics.translation":@YES, @"lyrics.romanization":@NO}];
+    });
+}
+BOOL MCLyricsShowTranslation(void) { MCLyricsDefaults(); return [[NSUserDefaults standardUserDefaults] boolForKey:@"lyrics.translation"]; }
+BOOL MCLyricsUseRomanization(void) { MCLyricsDefaults(); return [[NSUserDefaults standardUserDefaults] boolForKey:@"lyrics.romanization"]; }
+static void MCSetLyricOption(NSString *key, BOOL value) {
+    MCLyricsDefaults();
+    [[NSUserDefaults standardUserDefaults] setBool:value forKey:key];
+    [[NSNotificationCenter defaultCenter] postNotificationName:MCLyricsOptionsDidChangeNotification object:nil];
+}
+void MCSetLyricsShowTranslation(BOOL value) { MCSetLyricOption(@"lyrics.translation", value); }
+void MCSetLyricsUseRomanization(BOOL value) { MCSetLyricOption(@"lyrics.romanization", value); }
+
+static NSString *MCVariantAtTime(NSArray *lines, NSUInteger *cursor, double time) {
+    if (!lines.count) return nil;
+    while (*cursor + 1 < lines.count && [lines[*cursor + 1][@"time"] doubleValue] <= time) ++*cursor;
+    NSUInteger best = *cursor;
+    double delta = fabs([lines[best][@"time"] doubleValue] - time);
+    if (best + 1 < lines.count) {
+        double next = fabs([lines[best + 1][@"time"] doubleValue] - time);
+        if (next < delta) { best++; delta = next; }
+    }
+    return delta <= .12 ? lines[best][@"text"] : nil;
+}
 
 @implementation MCLyrics
++ (NSArray *)parseOriginal:(NSString *)original translation:(NSString *)translation romanization:(NSString *)romanization {
+    NSArray *variants = @[[self parse:translation], [self parse:romanization]];
+    NSArray *keys = @[@"translation", @"romanization"];
+    NSUInteger cursors[2] = {0, 0};
+    NSMutableArray *result = [NSMutableArray array];
+    for (NSDictionary *line in [self parse:original]) {
+        NSMutableDictionary *merged = [line mutableCopy];
+        for (NSUInteger i=0;i<2;i++) {
+            NSString *words = MCVariantAtTime(variants[i], &cursors[i], [line[@"time"] doubleValue]);
+            if (words.length) merged[keys[i]] = words;
+        }
+        [result addObject:merged];
+    }
+    return result;
+}
++ (NSString *)displayTextForLine:(NSDictionary *)line romanization:(BOOL)romanization {
+    if (romanization && [line[@"romanization"] length]) return line[@"romanization"];
+    return line[@"text"] ?: @"";
+}
 + (NSArray *)parse:(NSString *)text {
     if (![text isKindOfClass:[NSString class]] || !text.length)
         return @[];

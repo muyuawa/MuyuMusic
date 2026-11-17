@@ -3,6 +3,7 @@
 #import "MCDialogs.h"
 #import "MCAPI.h"
 #import "MCQRCode.h"
+#import "MCMaterialControls.h"
 @interface MCAccountController ()
 @property (nonatomic, strong) UIScrollView *scroll;
 @property (nonatomic, strong) UILabel *status;
@@ -17,8 +18,8 @@
 @end
 @implementation MCAccountController
 - (UIButton *)button:(NSString *)text action:(SEL)action {
-    UIButton *b = MCTextButton();
-    [b setTitle:text forState:UIControlStateNormal];
+    UIButton *b = [[MCMaterialButton alloc] initWithTitle:text icon:MCPlaybackIconAccount
+                                                filled:action == @selector(startLogin)];
     [b addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
     [self.scroll addSubview:b];
     return b;
@@ -80,8 +81,9 @@
     self.status.frame = CGRectMake(16, 8, w - 32, 60);
     self.qr.frame = CGRectMake((w - 176) / 2, 76, 176, 176);
     self.instructions.frame = CGRectMake(16, 260, w - 32, 76);
-    self.login.frame = CGRectMake(24, 340, w - 48, 44);
-    self.logout.frame = CGRectMake(24, 388, w - 48, 44);
+    CGFloat buttonWidth = MIN(400, w - 48);
+    self.login.frame = CGRectMake((w - buttonWidth) / 2, 340, buttonWidth, 44);
+    self.logout.frame = CGRectMake((w - buttonWidth) / 2, 392, buttonWidth, 44);
     self.scroll.contentSize = CGSizeMake(w, 484);
 }
 - (void)updateProfile {

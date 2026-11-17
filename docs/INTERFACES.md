@@ -15,17 +15,19 @@ Track: `id` NSString; `title`, `artist`, `album` NSString; `artwork` NSString UR
 Methods:
 `-search:(NSString *)query type:(NSInteger)type offset:(NSUInteger)offset completion:(MCAPICompletion)completion` (type 1 songs, 10 albums, 100 artists, 1000 playlists; result dictionary `items` array, `more` BOOL).
 `-discover:(MCAPICompletion)completion` → catalog array.
+`-tasteRecommendations:(MCAPICompletion)completion` → login required, dictionary `tracks`, `totalCount`, `unavailableTrackIDs`; fetches a fresh red-heart similar-song homepage batch on each call, including refresh, using the PC homepage API and explicit module cursor. Missing modules return an error; no artist/genre/daily substitute is relabeled as that module.
 `-dailyRecommendations:(MCAPICompletion)completion` → login required, dictionary `tracks`, `totalCount`, `unavailableTrackIDs` (empty). Uses `/api/v3/discovery/recommend/songs`, preserves `data.dailySongs` order and genuine metadata; missing/malformed data errors rather than inventing recommendations.
 `-playlist:(NSString *)identifier completion:(MCAPICompletion)completion` → dictionary `title`, `tracks` array, `totalCount`, `unavailableTrackIDs` string array. Fetch every ID in bounded batches; omitted detail records are reported without blocking available real tracks.
 `-album:(NSString *)identifier completion:(MCAPICompletion)completion` → same.
 `-artist:(NSString *)identifier completion:(MCAPICompletion)completion` → dictionary `title`, `tracks`, `albums` catalog array.
 `-userPlaylists:(MCAPICompletion)completion` → catalog array.
-`-likedTracks:(MCAPICompletion)completion` → dictionary `tracks`, `totalCount`, `unavailableTrackIDs`, matching playlist detail results.
+`-likedTracks:(MCAPICompletion)completion` → dictionary `tracks`, `totalCount`, `unavailableTrackIDs`, matching playlist detail results; the owned specialType=5 list is ordered by actual addition time (`trackIds.at`) newest first, with stable ties.
 `-likeTrack:(NSString *)identifier liked:(BOOL)liked completion:(MCAPICompletion)completion`.
 `-editablePlaylists:(MCAPICompletion)completion` → all current-account-created playlists, filtered by normalized creator ID after pagination; subscribed playlists are not offered as add targets.
 `-addTrack:(NSString *)trackID toPlaylist:(NSString *)playlistID completion:(MCAPICompletion)completion`; `-subscribePlaylist:(NSString *)identifier completion:(MCAPICompletion)completion`. Both require login and valid NetEase IDs, preserve service/network failures, and complete on main.
 `-songURL:(NSString *)identifier quality:(NSString *)quality completion:(MCAPICompletion)completion` → dictionary `url`, `format`, `bitrate`, `bitDepth`, `sampleRate`, `expires` (optional Unix time), `size` (optional); denied/trial-only rights → NSError, never silently substitute preview.
 `-lyrics:(NSString *)identifier completion:(MCAPICompletion)completion` → NSString LRC.
+`-lyricVariants:(NSString *)identifier completion:(MCAPICompletion)completion` → dictionary of synchronized LRC strings `original`, `translation`, `romanization`; missing optional variants are empty strings.
 `-createLoginKey:(MCAPICompletion)completion` → NSDictionary `key`, `url`.
 `-pollLoginKey:(NSString *)key completion:(MCAPICompletion)completion` → NSDictionary `status` numeric 800/801/802/803; on authorized save session.
 `-refreshLogin:(MCAPICompletion)completion`; `-logout`.

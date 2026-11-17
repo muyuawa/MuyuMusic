@@ -8,9 +8,12 @@
 #import "MCSourceSecurity.h"
 #import "MCLibrary.h"
 #import "MCLyrics.h"
+#import "MCLyricCell.h"
 #import "MCPlaybackButton.h"
 #import "MCNowPlayingLayout.h"
 #import "MCMotion.h"
+#import "MCMaterialControls.h"
+#import "MCPlayerCoverCard.h"
 #import <QuartzCore/QuartzCore.h>
 #include <math.h>
 #include <float.h>
@@ -20,21 +23,12 @@ static NSString *MCTimeString(double value) {
     return [NSString stringWithFormat:@"%u:%02u", (unsigned)value / 60, (unsigned)value % 60];
 }
 static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.height); }
-@interface MCPlayerModeControl : UISegmentedControl
-@end
-@implementation MCPlayerModeControl
-- (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
-    return CGRectContainsPoint(CGRectInset(self.bounds, 0, -6), point);
-}
-@end
 @interface MCNowPlayingController () <UITableViewDataSource, UITableViewDelegate, UIGestureRecognizerDelegate>
 @property (nonatomic, strong) UIView *content;
+@property (nonatomic, strong) UIView *bodyContainer;
+@property (nonatomic, strong) MCPlayerCoverCard *coverCard;
 @property (nonatomic, strong) UIImageView *cover;
 @property (nonatomic, strong) UILabel *navigationTitle;
-@property (nonatomic, strong) UILabel *titleLabel;
-@property (nonatomic, strong) UILabel *artistLabel;
-@property (nonatomic, strong) UIButton *quality;
-@property (nonatomic, strong) UILabel *qualityBadge;
 @property (nonatomic, strong) UILabel *status;
 @property (nonatomic, strong) UILabel *elapsed;
 @property (nonatomic, strong) UILabel *total;
@@ -47,10 +41,12 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
 @property (nonatomic, strong) MCPlaybackButton *favoriteButton;
 @property (nonatomic, strong) MCPlaybackButton *details;
 @property (nonatomic, strong) UIButton *queueButton;
-@property (nonatomic, strong) UISegmentedControl *mode;
+@property (nonatomic, strong) MCMaterialModeControl *mode;
 @property (nonatomic, strong) UITableView *lyricsTable;
 @property (nonatomic, strong) UILabel *lyricsEmpty;
 @property (nonatomic, strong) NSArray *lines;
+@property (nonatomic, strong) NSMutableDictionary *lyricHeights;
+@property (nonatomic) BOOL lyricsTranslation, lyricsRomanization;
 @property (nonatomic, copy) NSString *trackID;
 @property (nonatomic) NSInteger activeLine;
 @property (nonatomic) BOOL dragging;
@@ -93,6 +89,9 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"正在播放";
+    self.lyricHeights = [NSMutableDictionary dictionary];
+    self.lyricsTranslation = MCLyricsShowTranslation();
+    self.lyricsRomanization = MCLyricsUseRomanization();
     self.content = [UIView new];
     [self.view addSubview:self.content];
     for (NSNumber *direction in @[@(UISwipeGestureRecognizerDirectionLeft), @(UISwipeGestureRecognizerDirectionRight)]) {
@@ -101,24 +100,23 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
         swipe.delegate = self;
         [self.content addGestureRecognizer:swipe];
     }
-    self.mode = [[MCPlayerModeControl alloc] initWithItems:@[ @"封面", @"歌词" ]];
+    self.mode = [[MCMaterialModeControl alloc] initWithItems:@[ @"封面", @"歌词" ]];
     self.mode.selectedSegmentIndex = 0;
     self.mode.accessibilityLabel = @"播放页面内容";
     [self.mode addTarget:self action:@selector(modeChanged) forControlEvents:UIControlEventValueChanged];
     [self.content addSubview:self.mode];
-    self.cover = [UIImageView new];
-    self.cover.contentMode = UIViewContentModeScaleAspectFill;
-    self.cover.clipsToBounds = YES;
-    self.cover.layer.cornerRadius = 16;
-    self.cover.isAccessibilityElement = YES;
-    self.cover.accessibilityLabel = @"专辑封面";
-    self.cover.accessibilityHint = @"左滑切换到歌词，右滑切回封面";
-    [self.content addSubview:self.cover];
+    self.bodyContainer = [UIView new];
+    [self.content addSubview:self.bodyContainer];
+    self.coverCard = [MCPlayerCoverCard new];
+    self.cover = self.coverCard.artworkView;
+    [self.coverCard.titleButton addTarget:self action:@selector(titleTapped) forControlEvents:UIControlEventTouchUpInside];
+    [self.coverCard.qualityButton addTarget:self action:@selector(qualityTapped) forControlEvents:UIControlEventTouchUpInside];
+    [self.bodyContainer addSubview:self.coverCard];
     self.lyricsTable = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
     self.lyricsTable.dataSource = self;
     self.lyricsTable.delegate = self;
     self.lyricsTable.separatorStyle = UITableViewCellSeparatorStyleNone;
-    self.lyricsTable.rowHeight = 44;
+    self.lyricsTable.rowHeight = 56;
     self.lyricsTable.showsVerticalScrollIndicator = NO;
     self.lyricsTable.hidden = YES;
     self.lyricsTable.clipsToBounds = YES;
@@ -129,24 +127,7 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
     self.lyricsEmpty.numberOfLines = 4;
     self.lyricsEmpty.textAlignment = NSTextAlignmentCenter;
     self.lyricsTable.backgroundView = self.lyricsEmpty;
-    [self.content addSubview:self.lyricsTable];
-    self.titleLabel = [self label:20];
-    self.titleLabel.font = [UIFont boldSystemFontOfSize:20];
-    self.artistLabel = [self label:13];
-    self.quality = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.quality.accessibilityLabel = @"歌曲详情与实际音质";
-    [self.quality addTarget:self action:@selector(qualityTapped) forControlEvents:UIControlEventTouchUpInside];
-    [self.quality addTarget:self action:@selector(qualityPressed) forControlEvents:UIControlEventTouchDown];
-    [self.quality addTarget:self action:@selector(qualityReleased)
-          forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
-    self.qualityBadge = [UILabel new];
-    self.qualityBadge.backgroundColor = [UIColor clearColor];
-    self.qualityBadge.font = [UIFont systemFontOfSize:11];
-    self.qualityBadge.textAlignment = NSTextAlignmentCenter;
-    self.qualityBadge.layer.cornerRadius = 7;
-    self.qualityBadge.clipsToBounds = YES;
-    [self.quality addSubview:self.qualityBadge];
-    [self.content addSubview:self.quality];
+    [self.bodyContainer addSubview:self.lyricsTable];
     self.slider = [UISlider new];
     self.slider.accessibilityLabel = @"播放进度";
     [self.slider addTarget:self action:@selector(dragStart) forControlEvents:UIControlEventTouchDown];
@@ -167,7 +148,9 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
     self.repeat = [self button:MCPlaybackIconSequence label:@"顺序播放" action:@selector(repeatTapped)];
     self.repeat.accessibilityHint = @"切换顺序、列表循环或单曲循环";
     self.shuffleButton = [self button:MCPlaybackIconShuffle label:@"随机播放" action:@selector(shuffleTapped)];
-    self.favoriteButton = [self button:MCPlaybackIconFavorite label:@"本地收藏" action:@selector(favorite)];
+    self.favoriteButton = self.coverCard.favoriteButton;
+    self.favoriteButton.accessibilityLabel = @"本地收藏";
+    [self.favoriteButton addTarget:self action:@selector(favorite) forControlEvents:UIControlEventTouchUpInside];
     self.details = [[MCPlaybackButton alloc] initWithFrame:CGRectMake(0, 0, 44, 44)];
     self.details.icon = MCPlaybackIconDetails;
     self.details.accessibilityLabel = @"歌曲操作";
@@ -175,10 +158,12 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
     // One fixed-width item keeps both controls visible with long back titles on iOS 6.
     UIView *navigationActions = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 88, 44)];
     navigationActions.clipsToBounds = YES;
-    self.queueButton = MCTextButton();
+    MCPlaybackButton *queueIcon = [MCPlaybackButton new];
+    queueIcon.icon = MCPlaybackIconQueue;
+    queueIcon.accessibilityLabel = @"播放队列";
+    self.queueButton = queueIcon;
     self.queueButton.frame = CGRectMake(0, 0, 44, 44);
     self.queueButton.titleLabel.font = [UIFont systemFontOfSize:14];
-    [self.queueButton setTitle:@"队列" forState:UIControlStateNormal];
     [self.queueButton addTarget:self action:@selector(queueTapped) forControlEvents:UIControlEventTouchUpInside];
     self.details.frame = CGRectMake(44, 0, 44, 44);
     [navigationActions addSubview:self.queueButton];
@@ -208,7 +193,10 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
                                                  name:MCLibraryDidChangeNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(motionChanged)
         name:MCMotionDidChangeNotification object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(lyricOptionsChanged)
+        name:MCLyricsOptionsDidChangeNotification object:nil];
     [[MCArtwork sharedCache] load:nil into:self.cover];
+    [self.coverCard updateArtwork:nil];
     [self update];
     [self theme];
 }
@@ -241,18 +229,16 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
     self.content.frame = self.view.bounds;
     MCNowPlayingLayout l = MCNowPlayingMakeLayout(self.content.bounds.size.width, self.content.bounds.size.height);
     self.mode.frame = MCRect(l.mode);
-    self.cover.frame = MCRect(l.cover);
-    BOOL resized = !CGRectEqualToRect(self.lyricsTable.frame, MCRect(l.body));
-    self.lyricsTable.frame = MCRect(l.body);
+    self.bodyContainer.frame = MCRect(l.body);
+    self.coverCard.frame = CGRectOffset(MCRect(l.cover), -l.body.x, -l.body.y);
+    BOOL resized = !CGRectEqualToRect(self.lyricsTable.frame, self.bodyContainer.bounds);
+    self.lyricsTable.frame = self.bodyContainer.bounds;
     if (resized) {
-        CGFloat inset = MCLyricCenterInset(l.body.height, self.lyricsTable.rowHeight);
-        self.lyricsTable.contentInset = UIEdgeInsetsMake(inset, 0, inset, 0);
+        [self.lyricHeights removeAllObjects];
+        [self.lyricsTable reloadData];
+        [self updateLyricInsets];
         self.lyricsNeedCenter = YES;
     }
-    self.titleLabel.frame = MCRect(l.title);
-    self.artistLabel.frame = MCRect(l.artist);
-    self.quality.frame = MCRect(l.quality);
-    self.qualityBadge.frame = CGRectMake(0, 22, l.quality.width, 22);
     self.slider.frame = MCRect(l.slider);
     self.elapsed.frame = MCRect(l.elapsed);
     self.total.frame = MCRect(l.total);
@@ -262,26 +248,20 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
     self.nextButton.frame = MCRect(l.next);
     self.repeat.frame = MCRect(l.repeat);
     self.shuffleButton.frame = MCRect(l.shuffle);
-    self.favoriteButton.frame = MCRect(l.favorite);
     [self centerLyrics:NO];
 }
 - (void)theme {
     MCTheme *t = [MCTheme sharedTheme];
-    self.view.backgroundColor = t.background;
-    self.cover.backgroundColor = t.surface;
-    self.lyricsTable.backgroundColor = t.background;
+    self.view.backgroundColor = self.bodyContainer.backgroundColor = t.surface;
+    self.lyricsTable.backgroundColor = t.surface;
     self.lyricsEmpty.textColor = t.muted;
     self.navigationTitle.textColor = t.text;
-    self.titleLabel.textColor = t.text;
-    self.artistLabel.textColor = t.muted;
     self.elapsed.textColor = self.total.textColor = t.muted;
-    self.qualityBadge.backgroundColor = [t.primary colorWithAlphaComponent:t.dark ? .18 : .09];
-    self.qualityBadge.textColor = t.muted;
+    ((MCPlaybackButton *)self.queueButton).ink = t.text;
 
-    [t applyToSegmentedControl:self.mode];
     [t applyToNavigationBar:self.navigationController.navigationBar];
     [self.slider setMinimumTrackImage:MCPlayerSliderTrack(t.primary) forState:UIControlStateNormal];
-    [self.slider setMaximumTrackImage:MCPlayerSliderTrack([t.muted colorWithAlphaComponent:.25])
+    [self.slider setMaximumTrackImage:MCPlayerSliderTrack(t.surfaceContainerHigh)
                             forState:UIControlStateNormal];
     [self.slider setThumbImage:MCPlayerSliderThumb(t.primary, NO) forState:UIControlStateNormal];
     [self.slider setThumbImage:MCPlayerSliderThumb(t.primary, YES) forState:UIControlStateHighlighted];
@@ -293,28 +273,28 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
     self.play.fill = t.primary;
     self.play.ink = t.onPrimary;
     self.previousButton.ink = self.nextButton.ink = self.details.ink = t.text;
-    self.repeat.ink = self.repeat.selected ? t.primary : t.muted;
-    self.shuffleButton.ink = self.shuffleButton.selected ? t.primary : t.muted;
-    self.favoriteButton.ink = self.favoriteButton.selected ? t.accent : t.muted;
+    self.repeat.selectionFill = self.shuffleButton.selectionFill = t.primaryContainer;
+    self.repeat.ink = self.repeat.selected ? t.onPrimaryContainer : t.muted;
+    self.shuffleButton.ink = self.shuffleButton.selected ? t.onPrimaryContainer : t.muted;
     self.status.textColor = [MCPlayer sharedPlayer].error ? t.accent : t.muted;
 }
 - (void)update {
     MCPlayer *p = [MCPlayer sharedPlayer];
     NSDictionary *track = p.currentTrack;
-    self.titleLabel.text = track[@"title"] ?: @"还没有播放歌曲";
-    self.artistLabel.text = track[@"artist"] ?: @"从搜索或音乐库选择歌曲";
-    self.navigationTitle.text = self.mode.selectedSegmentIndex == 1 ? (track[@"title"] ?: @"歌词") : @"正在播放";
+    self.navigationTitle.text = @"正在播放";
     self.navigationTitle.accessibilityLabel = self.navigationTitle.text;
     self.play.icon = p.playing ? MCPlaybackIconPause : MCPlaybackIconPlay;
     self.play.accessibilityLabel = p.playing ? @"暂停" : @"播放";
     NSInteger repeat = MAX(0, MIN(2, p.repeatMode));
-    self.repeat.icon = [@[ @(MCPlaybackIconSequence), @(MCPlaybackIconRepeat), @(MCPlaybackIconRepeatOne) ][repeat] unsignedIntegerValue];
-    self.repeat.accessibilityLabel = @[ @"顺序播放", @"列表循环", @"单曲循环" ][repeat];
+    self.repeat.icon = repeat == 2 ? MCPlaybackIconRepeatOne : MCPlaybackIconRepeat;
+    self.repeat.accessibilityLabel = @[ @"循环关闭", @"列表循环", @"单曲循环" ][repeat];
     self.repeat.selected = repeat != 0;
     self.shuffleButton.selected = p.shuffle;
     self.shuffleButton.accessibilityValue = p.shuffle ? @"已开启" : @"已关闭";
-    self.qualityBadge.text = p.qualityLabel ?: @"播放后显示实际音质";
-    self.quality.accessibilityValue = self.qualityBadge.text;
+    NSString *quality = p.qualityLabel;
+    if (!quality.length || [quality isEqual:@"—"]) quality = @"音质待加载";
+    [self.coverCard showTitle:track[@"title"] ?: @"还没有播放歌曲"
+        artist:track[@"artist"] ?: @"从搜索或音乐库选择歌曲" quality:quality];
     NSString *reason = MCSourceFailureText(p.error.localizedDescription, @"未知播放错误，请重试或切换音源。");
     NSString *brief = [reason substringToIndex:MIN((NSUInteger)10, reason.length)];
     if (reason.length > 10) brief = [brief stringByAppendingString:@"…"];
@@ -336,13 +316,17 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
     if (!(self.trackID == identifier || [self.trackID isEqual:identifier])) {
         self.trackID = identifier;
         self.lines = @[];
+        [self.lyricHeights removeAllObjects];
         self.activeLine = -1;
         self.lyricsResumeAfter = 0;
         self.lyricsNeedCenter = YES;
         self.favoriteButton.selected = NO;
         self.favoriteChanging = NO;
         [self refreshFavorite];
-        [[MCArtwork sharedCache] load:track[@"artwork"] into:self.cover animated:YES completion:nil];
+        __weak MCNowPlayingController *weakSelf = self;
+        [[MCArtwork sharedCache] load:track[@"artwork"] into:self.cover animated:YES completion:^(UIImage *image) {
+            [weakSelf.coverCard updateArtwork:image];
+        }];
         [self loadLyrics:track];
     } else if (!track) self.lyricsEmpty.text = @"选择歌曲后显示歌词";
     [self updateButtonColors];
@@ -355,21 +339,24 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
     if (!track) return;
     NSString *identifier = [self.trackID copy];
     __weak MCNowPlayingController *w = self;
-    void (^loaded)(NSString *, NSError *) = ^(NSString *text, NSError *error) {
+    void (^loaded)(NSDictionary *, NSError *) = ^(NSDictionary *variants, NSError *error) {
         MCNowPlayingController *s = w;
         if (!s || ![s.trackID isEqual:identifier]) return;
-        s.lines = [MCLyrics parse:text ?: @""];
+        s.lines = [MCLyrics parseOriginal:variants[@"original"] translation:variants[@"translation"]
+                           romanization:variants[@"romanization"]];
+        [s.lyricHeights removeAllObjects];
         s.activeLine = -1;
         s.lyricsNeedCenter = YES;
         s.lyricsEmpty.text = error ? [NSString stringWithFormat:@"歌词读取失败\n%@", error.localizedDescription] : @"暂无可用的同步歌词";
         s.lyricsEmpty.hidden = s.lines.count > 0;
         [s.lyricsTable reloadData];
+        [s updateLyricInsets];
         [s progress];
     };
     if (track[@"path"])
-        [[MCLibrary sharedLibrary] lyricsForTrack:track completion:^(NSString *text) { loaded(text, nil); }];
+        [[MCLibrary sharedLibrary] lyricsForTrack:track completion:^(NSString *text) { loaded(@{@"original":text ?: @""}, nil); }];
     else
-        [[MCAPI sharedAPI] lyrics:identifier completion:^(id result, NSError *error) { loaded(result, error); }];
+        [[MCAPI sharedAPI] lyricVariants:identifier completion:^(id result, NSError *error) { loaded(result, error); }];
 }
 - (void)progress {
     MCPlayer *p = [MCPlayer sharedPlayer];
@@ -393,21 +380,44 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
         self.activeLine >= (NSInteger)self.lines.count || self.lyricsTable.bounds.size.height <= 0 ||
         !MCLyricCanFollow(CACurrentMediaTime(), self.lyricsResumeAfter,
                          self.lyricsTable.dragging, self.lyricsTable.decelerating)) return;
-    CGFloat y = MCLyricCenterOffset((unsigned)self.activeLine, self.lyricsTable.bounds.size.height,
-                                   self.lyricsTable.rowHeight);
+    CGRect row = [self.lyricsTable rectForRowAtIndexPath:[NSIndexPath indexPathForRow:self.activeLine inSection:0]];
+    CGFloat y = CGRectGetMidY(row) - self.lyricsTable.bounds.size.height / 2;
     self.lyricsNeedCenter = NO;
     [self.lyricsTable setContentOffset:CGPointMake(0, y) animated:animated && MCMotionEnabled()];
 }
 - (void)styleLyricCell:(UITableViewCell *)cell row:(NSInteger)row {
-    BOOL active = row == self.activeLine;
-    MCTheme *t = [MCTheme sharedTheme];
-    cell.textLabel.font = active ? [UIFont boldSystemFontOfSize:16] : [UIFont systemFontOfSize:14];
-    cell.textLabel.textColor = active ? t.primary : t.muted;
-    cell.textLabel.backgroundColor = [UIColor clearColor];
-    cell.backgroundColor = [UIColor clearColor];
-    cell.contentView.backgroundColor = [UIColor clearColor];
-    cell.selectedBackgroundView.backgroundColor = [t.primary colorWithAlphaComponent:.1];
-    cell.accessibilityValue = active ? @"当前歌词" : nil;
+    NSString *text = [MCLyrics displayTextForLine:self.lines[row] romanization:self.lyricsRomanization];
+    [(MCLyricCell *)cell showText:text translation:[self translationAtRow:row] active:row == self.activeLine];
+}
+- (NSString *)translationAtRow:(NSInteger)row {
+    NSString *translation = self.lines[row][@"translation"];
+    NSString *main = [MCLyrics displayTextForLine:self.lines[row] romanization:self.lyricsRomanization];
+    return self.lyricsTranslation && ![translation isEqual:main] ? translation : nil;
+}
+- (CGFloat)lyricHeightAtRow:(NSInteger)row {
+    NSNumber *cached = self.lyricHeights[@(row)];
+    if (cached) return cached.doubleValue;
+    CGFloat height = [MCLyricCell heightForText:[MCLyrics displayTextForLine:self.lines[row] romanization:self.lyricsRomanization]
+        translation:[self translationAtRow:row] width:self.lyricsTable.bounds.size.width];
+    self.lyricHeights[@(row)] = @(height);
+    return height;
+}
+- (void)updateLyricInsets {
+    CGFloat height = self.lyricsTable.bounds.size.height;
+    CGFloat first = self.lines.count ? [self lyricHeightAtRow:0] : 56;
+    CGFloat last = self.lines.count ? [self lyricHeightAtRow:self.lines.count - 1] : 56;
+    UIEdgeInsets insets = UIEdgeInsetsMake(MAX(0, (height - first) / 2), 0, MAX(0, (height - last) / 2), 0);
+    if (!UIEdgeInsetsEqualToEdgeInsets(insets, self.lyricsTable.contentInset)) self.lyricsTable.contentInset = insets;
+}
+- (void)lyricOptionsChanged {
+    self.lyricsTranslation = MCLyricsShowTranslation();
+    self.lyricsRomanization = MCLyricsUseRomanization();
+    [self.lyricHeights removeAllObjects];
+    [self.lyricsTable reloadData];
+    [self updateLyricInsets];
+    self.lyricsNeedCenter = YES;
+    self.lyricsResumeAfter = 0;
+    [self progress];
 }
 - (void)updateLyricCells {
     for (NSIndexPath *path in self.lyricsTable.indexPathsForVisibleRows)
@@ -417,8 +427,8 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
     BOOL lyrics = self.mode.selectedSegmentIndex == 1;
     if (self.lyricsTable.hidden == !lyrics) return;
     [self.content layoutIfNeeded];
-    MCFadeChange(self.content, .18, ^{
-        self.cover.hidden = self.titleLabel.hidden = self.artistLabel.hidden = self.quality.hidden = lyrics;
+    MCFadeChange(self.bodyContainer, .15, ^{
+        self.coverCard.hidden = lyrics;
         self.lyricsTable.hidden = !lyrics;
         self.lyricsResumeAfter = 0;
         self.lyricsNeedCenter = YES;
@@ -460,17 +470,20 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
     [self update];
 }
 - (void)shuffleTapped { [MCPlayer sharedPlayer].shuffle = ![MCPlayer sharedPlayer].shuffle; [self update]; }
-- (void)qualityPressed { self.qualityBadge.alpha = .6; }
-- (void)qualityReleased { self.qualityBadge.alpha = 1; }
 - (void)errorTapped {
     if ([MCPlayer sharedPlayer].error) [self qualityTapped];
 }
+- (NSString *)songInformation {
+    MCPlayer *p = [MCPlayer sharedPlayer];
+    NSDictionary *track = p.currentTrack;
+    return [NSString stringWithFormat:@"%@\n%@\n%@\n实际音质：%@", track[@"title"] ?: @"还没有播放歌曲",
+        track[@"artist"] ?: @"", track[@"album"] ?: @"", p.qualityLabel ?: @"播放后显示"];
+}
+- (void)titleTapped { MCMessage(self, @"歌曲详情", [self songInformation]); }
 - (void)qualityTapped {
     MCPlayer *p = [MCPlayer sharedPlayer];
     NSDictionary *track = p.currentTrack;
-    NSMutableString *text = [NSMutableString stringWithFormat:@"%@\n%@\n%@\n实际音质：%@",
-                            track[@"title"] ?: @"还没有播放歌曲", track[@"artist"] ?: @"",
-                            track[@"album"] ?: @"", p.qualityLabel ?: @"播放后显示"];
+    NSString *text = [self songInformation];
     if (p.error) {
         __weak MCNowPlayingController *weakSelf = self;
         NSString *message = [NSString stringWithFormat:@"歌曲：%@\n音源：%@\n\n%@",
@@ -520,17 +533,12 @@ static CGRect MCRect(MCPlayerRect r) { return CGRectMake(r.x, r.y, r.width, r.he
     }];
 }
 - (NSInteger)tableView:(UITableView *)t numberOfRowsInSection:(NSInteger)section { return self.lines.count; }
+- (CGFloat)tableView:(UITableView *)t heightForRowAtIndexPath:(NSIndexPath *)path { return [self lyricHeightAtRow:path.row]; }
 - (UITableViewCell *)tableView:(UITableView *)t cellForRowAtIndexPath:(NSIndexPath *)path {
     UITableViewCell *cell = [t dequeueReusableCellWithIdentifier:@"lyric"];
     if (!cell) {
-        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"lyric"];
-        cell.textLabel.numberOfLines = 2;
-        cell.textLabel.textAlignment = NSTextAlignmentCenter;
-        cell.textLabel.lineBreakMode = NSLineBreakByTruncatingTail;
-        cell.selectedBackgroundView = [UIView new];
-        cell.accessibilityHint = @"点按从这一句开始播放";
+        cell = [[MCLyricCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"lyric"];
     }
-    cell.textLabel.text = self.lines[path.row][@"text"];
     [self styleLyricCell:cell row:path.row];
     return cell;
 }

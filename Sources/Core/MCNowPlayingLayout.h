@@ -8,9 +8,17 @@ typedef struct {
     MCPlayerRect slider, elapsed, total, status;
     MCPlayerRect previous, play, next, repeat, shuffle, favorite;
 } MCNowPlayingLayout;
+typedef struct {
+    MCPlayerRect title, artist, quality, favorite, panel;
+    double titleFontSize, artistFontSize;
+    unsigned titleLines;
+} MCPlayerCoverLayout;
 
 /* Coordinates are relative to the visible area below the navigation bar. */
 MCNowPlayingLayout MCNowPlayingMakeLayout(double width, double height);
+/* Single-line metadata coordinates relative to the immersive cover card.
+   The last argument is retained for callers; titles no longer expand. */
+MCPlayerCoverLayout MCPlayerCoverMakeLayout(double width, double height, unsigned requestedTitleLines);
 /* Root-view coordinates; a hidden tab bar may still have its visible frame. */
 MCPlayerRect MCMiniPlayerMakeFrame(double width, double height, double tabBarTop, bool tabBarHidden);
 double MCLyricCenterInset(double height, double rowHeight);

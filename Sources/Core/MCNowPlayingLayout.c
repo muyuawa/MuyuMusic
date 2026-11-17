@@ -10,27 +10,64 @@ MCPlayerRect MCMiniPlayerMakeFrame(double width, double height, double tabBarTop
 }
 MCNowPlayingLayout MCNowPlayingMakeLayout(double width, double height) {
     MCNowPlayingLayout l = {0};
-    double footer = height - 134;
-    double bodyHeight = fmax(0, footer - 56);
-    double art = fmin(172, fmax(0, bodyHeight - 70));
-    double infoY = 44 + art + 4;
-    l.mode = rect((width - 152) / 2, 6, 152, 32);
-    l.body = rect(12, 44, width - 24, bodyHeight);
-    l.cover = rect((width - art) / 2, 44, art, art);
-    l.title = rect(16, infoY, width - 32, 22);
-    l.artist = rect(16, infoY + 22, width - 32, 18);
-    /* The 44pt quality hit area surrounds the small badge below the artist. */
-    l.quality = rect((width - 208) / 2, infoY + 22, 208, 44);
-    l.slider = rect(20, footer - 10, width - 40, 44);
-    l.elapsed = rect(20, footer + 20, 52, 12);
-    l.total = rect(width - 72, footer + 20, 52, 12);
-    l.status = rect(74, footer + 20, width - 148, 12);
-    l.previous = rect(width / 2 - 104, footer + 36, 52, 52);
-    l.play = rect(width / 2 - 28, footer + 34, 56, 56);
-    l.next = rect(width / 2 + 52, footer + 36, 52, 52);
-    l.repeat = rect(width / 2 - 102, footer + 90, 44, 44);
-    l.shuffle = rect(width / 2 - 22, footer + 90, 44, 44);
-    l.favorite = rect(width / 2 + 58, footer + 90, 44, 44);
+    double content = fmax(0, fmin(width - 32, 560));
+    double left = (width - content) / 2, center = width / 2;
+    double playSide = 60, bottomInset = 8, controlGap = 20;
+    double playY = fmax(0, height - bottomInset - playSide);
+    double footer = fmax(0, playY - controlGap - 44);
+    double bodyTop = 52, bodyHeight = fmax(0, footer - 12 - bodyTop);
+    double art = fmin(width >= 600 ? 480 : 420, fmin(content, bodyHeight));
+    double artY = bodyTop + (bodyHeight - art) / 2;
+    double controls = fmin(content, 360), edge = (width - controls) / 2;
+    double step = (controls - 44) / 4;
+    l.mode = rect(center - 96, 4, 192, 36);
+    l.body = rect(left, bodyTop, content, bodyHeight);
+    l.cover = rect(center - art / 2, artY, art, art);
+    MCPlayerCoverLayout card = MCPlayerCoverMakeLayout(art, art, 1);
+    l.title = card.title; l.artist = card.artist;
+    l.quality = card.quality; l.favorite = card.favorite;
+    MCPlayerRect *metadata[] = {&l.title, &l.artist, &l.quality, &l.favorite};
+    for (unsigned i = 0; i < sizeof metadata / sizeof *metadata; i++) {
+        metadata[i]->x += l.cover.x; metadata[i]->y += l.cover.y;
+    }
+    l.slider = rect(left + 52, footer, fmax(0, content - 104), 44);
+    l.elapsed = rect(left, footer, 44, 44);
+    l.total = rect(left + content - 44, footer, 44, 44);
+    l.status = rect(left, footer + 44, content, 16);
+    l.play = rect(center - playSide / 2, playY, playSide, playSide);
+    double buttonY = l.play.y + 8;
+    l.previous = rect(edge + step, buttonY, 44, 44);
+    l.next = rect(edge + step * 3, buttonY, 44, 44);
+    l.shuffle = rect(edge, buttonY, 44, 44);
+    l.repeat = rect(width - edge - 44, buttonY, 44, 44);
+    return l;
+}
+MCPlayerCoverLayout MCPlayerCoverMakeLayout(double width, double height, unsigned requestedTitleLines) {
+    (void)requestedTitleLines;
+    MCPlayerCoverLayout l = {0};
+    bool tablet = width >= 400;
+    double padding = tablet ? 16 : 12;
+    double top = tablet ? 6 : 2;
+    double bottom = tablet ? 12 : 8;
+    double gap = tablet ? 3 : 2;
+    double titleLine = tablet ? 25 : 20;
+    double artistHeight = tablet ? 16 : 14, chipHeight = tablet ? 22 : 20;
+    double panelHeight = top + titleLine + gap + artistHeight + gap + chipHeight + bottom;
+    l.titleFontSize = tablet ? 20 : 16;
+    l.artistFontSize = tablet ? 13 : 12;
+    l.titleLines = 1;
+    /* One fixed-size title row. Fade above the information so the scrim
+       already protects the first glyphs, rather than starting behind them. */
+    double fade = fmin(tablet ? 24 : 18, fmax(8, height * .4 - panelHeight));
+    l.panel = rect(0, fmax(0, height - panelHeight - fade), width, fmin(height, panelHeight + fade));
+    double textWidth = fmax(0, width - padding * 2 - 52);
+    double titleY = height - panelHeight + top, titleHeight = titleLine;
+    double artistY = titleY + titleHeight + gap;
+    double qualityY = artistY + artistHeight + gap;
+    l.title = rect(padding, titleY, textWidth, titleHeight);
+    l.artist = rect(padding, artistY, textWidth, artistHeight);
+    l.quality = rect(padding, qualityY, textWidth, chipHeight);
+    l.favorite = rect(width - padding - 44, qualityY + chipHeight - 44, 44, 44);
     return l;
 }
 double MCLyricCenterInset(double height, double rowHeight) {
